@@ -10,6 +10,10 @@ DEFAULT_DATA_DIR = REPO_ROOT / "data"
 
 
 def _absolute_path(value: str | None, default: Path) -> Path:
+    # Older copies of .env.example used documentation-only placeholder paths.
+    # Treat those as unset so a copied configuration remains runnable.
+    if value and value.startswith("/absolute/path/to/"):
+        value = None
     path = Path(value).expanduser() if value else default
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
