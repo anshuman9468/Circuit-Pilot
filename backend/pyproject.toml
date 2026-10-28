@@ -1,10 +1,11 @@
 [project]
 name = "circuitpilot-backend"
 version = "0.1.0"
-description = "Persistent local backend for CircuitPilot Phase 1"
+description = "Persistent local backend for CircuitPilot Phase 2"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi==0.115.6",
+  "openai==1.109.1",
   "pydantic==2.10.4",
   "sqlalchemy==2.0.36",
   "uvicorn[standard]==0.34.0",
@@ -19,4 +20,3 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-

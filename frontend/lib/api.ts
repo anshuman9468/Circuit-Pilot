@@ -32,6 +32,69 @@ export type Results = {
   runs: unknown[];
 };
 
+export type ModelConfig = {
+  configured: boolean;
+  status: "not_configured" | "configured_not_tested" | "connected" | "connection_failed" | string;
+  model: string;
+  base_url: string;
+  message: string;
+  last_error: string | null;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  run_id: string | null;
+};
+
+export type Usage = {
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+};
+
+export type RunEvent = {
+  id: string;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type AgentRun = {
+  id: string;
+  project_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted" | "incomplete" | string;
+  model: string;
+  rounds: number;
+  tool_calls: number;
+  usage: Usage;
+  error_code: string | null;
+  error_message: string | null;
+  cancel_requested: boolean;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  events: RunEvent[];
+};
+
+export type Conversation = {
+  conversation_id: string;
+  messages: ConversationMessage[];
+  latest_run: AgentRun | null;
+};
+
+export type ConnectionTest = {
+  status: string;
+  model: string;
+  message: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+};
+
 const configuredBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const API_BASE = configuredBase.endsWith("/") ? configuredBase.slice(0, -1) : configuredBase;
 
@@ -83,5 +146,17 @@ export const api = {
     request<void>(`/projects/${projectId}/files/${fileId}`, { method: "DELETE" }),
   activity: (id: string) => request<ActivityEvent[]>(`/projects/${id}/activity`),
   results: (id: string) => request<Results>(`/projects/${id}/results`),
+  modelConfig: () => request<ModelConfig>("/config/model"),
+  testModelConnection: () => request<ConnectionTest>("/config/model/test", { method: "POST" }),
+  getConversation: (id: string) => request<Conversation>(`/projects/${id}/conversation`),
+  sendMessage: (id: string, content: string) =>
+    request<AgentRun>(`/projects/${id}/conversation/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  getRun: (projectId: string, runId: string) => request<AgentRun>(`/projects/${projectId}/runs/${runId}`),
+  cancelRun: (projectId: string, runId: string) =>
+    request<AgentRun>(`/projects/${projectId}/runs/${runId}/cancel`, { method: "POST" }),
+  retryRun: (projectId: string, runId: string) =>
+    request<AgentRun>(`/projects/${projectId}/runs/${runId}/retry`, { method: "POST" }),
 };
-

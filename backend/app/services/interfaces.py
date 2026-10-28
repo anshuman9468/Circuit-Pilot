@@ -1,17 +1,20 @@
-"""Small seams for the later Meta-agent phase.
-
-These are intentionally protocols only. Phase 1 does not invoke a model, run tools,
-or stream agent events.
-"""
+"""Interfaces for the provider and later execution phases."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class ModelClient(Protocol):
-    async def complete(self, prompt: str) -> str: ...
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        max_completion_tokens: int,
+    ) -> Any: ...
+
+    async def test_connection(self) -> Any: ...
 
 
 class AgentOrchestrator(Protocol):
@@ -24,4 +27,3 @@ class ToolRunner(Protocol):
 
 class EventStream(Protocol):
     async def publish(self, project_id: str, event_type: str, payload: dict) -> None: ...
-

@@ -382,7 +382,7 @@ def get_results(project_id: str, session: Session = Depends(get_session)) -> Res
     get_project(session, project_id)
     return ResultsResponse(
         available=False,
-        message="Simulation and synthesis results will be available after the Meta-agent execution phase is connected.",
+        message="Simulation and synthesis results will be available in a later execution phase. Phase 2 conversations do not create verification results.",
         runs=[],
     )
 

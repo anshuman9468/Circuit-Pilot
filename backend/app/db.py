@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
@@ -17,6 +17,15 @@ def create_database(database_path: Path):
         connect_args={"check_same_thread": False},
         future=True,
     )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     return engine, session_factory
 
@@ -26,4 +35,3 @@ def initialize_database(engine) -> None:
     from . import models  # noqa: F401
 
     Base.metadata.create_all(engine)
-

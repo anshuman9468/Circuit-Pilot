@@ -7,9 +7,13 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .api import router, validation_error_response
+from .conversation_api import router as conversation_router
 from .config import Settings, settings
 from .db import create_database, initialize_database
 from .errors import ApiError
+from .services.agent_runs import RunManager, recover_interrupted_runs
+from .services.model_provider import MetaModelProvider
+from .services.tool_registry import ReadOnlyToolRegistry
 from .services.workspace import WorkspaceService
 
 
@@ -49,6 +53,12 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.workspace = WorkspaceService(active_settings.workspace_root, active_settings.max_file_size)
+    app.state.model_provider = MetaModelProvider(active_settings)
+    app.state.model_connection_status = "configured_not_tested" if active_settings.model_api_key else "not_configured"
+    app.state.model_last_error = None
+    app.state.tool_registry = ReadOnlyToolRegistry(active_settings.max_tool_result_chars)
+    app.state.run_manager = RunManager(app)
+    recover_interrupted_runs(session_factory)
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=active_settings.max_request_size)
     app.add_middleware(
         CORSMiddleware,
@@ -58,6 +68,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router)
+    app.include_router(conversation_router)
 
     @app.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError):

@@ -2,6 +2,7 @@
 
 import {
   AlertCircle,
+  Bot,
   Boxes,
   Check,
   ChevronRight,
@@ -16,15 +17,19 @@ import {
   Layers3,
   MoreHorizontal,
   Plus,
+  RefreshCw,
+  Send,
   Save,
   Sparkles,
+  Square,
   Trash2,
+  Wifi,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
-import { ActivityEvent, api, Project, ProjectFile, ProjectSummary, Results } from "../lib/api";
+import { ActivityEvent, AgentRun, api, Conversation, ModelConfig, Project, ProjectFile, ProjectSummary, Results } from "../lib/api";
 
 const CodeEditor = dynamic(() => import("../components/CodeEditor"), {
   ssr: false,
@@ -35,7 +40,7 @@ const EXAMPLE_REQUIREMENTS = `Design a synchronous, parameterized digital block.
 
 Describe the clock and reset behavior, the input and output signals, configurable parameters, and any timing or protocol requirements. Include edge cases that should be considered during later verification.`;
 
-type Tab = "files" | "activity" | "results";
+type Tab = "assistant" | "files" | "activity" | "results";
 type Modal = "project" | "file" | "rename" | null;
 
 function readableDate(value: string): string {
@@ -58,6 +63,24 @@ function eventLabel(event: ActivityEvent): string {
   return event.event_type.replaceAll(".", " / ");
 }
 
+function modelStatusLabel(status: string): string {
+  return {
+    not_configured: "Not configured",
+    configured_not_tested: "Configured · not tested",
+    connected: "Connected",
+    connection_failed: "Connection failed",
+  }[status] || status;
+}
+
+function runStatusLabel(status: string): string {
+  return {
+    failed: "Request failed",
+    cancelled: "Request cancelled",
+    interrupted: "Request interrupted",
+    incomplete: "Request stopped at a limit",
+  }[status] || "Request ended";
+}
+
 export default function HomePage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -70,7 +93,15 @@ export default function HomePage() {
   const [fileDraft, setFileDraft] = useState("");
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [results, setResults] = useState<Results | null>(null);
-  const [tab, setTab] = useState<Tab>("files");
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [tab, setTab] = useState<Tab>("assistant");
   const [modal, setModal] = useState<Modal>(null);
   const [newProject, setNewProject] = useState({ name: "", description: "", requirements: "" });
   const [newFilePath, setNewFilePath] = useState("");
@@ -104,6 +135,33 @@ export default function HomePage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [hasUnsaved]);
 
+  useEffect(() => {
+    if (!activeProjectId || !activeRunId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const run = await api.getRun(activeProjectId, activeRunId);
+        if (stopped) return;
+        setAgentRun(run);
+        if (run.status === "queued" || run.status === "running") {
+          timer = setTimeout(() => void poll(), 900);
+        } else {
+          setActiveRunId(null);
+          const history = await api.getConversation(activeProjectId);
+          if (!stopped) setConversation(history);
+        }
+      } catch (caught) {
+        if (!stopped) setError(errorMessage(caught));
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeProjectId, activeRunId]);
+
   async function bootstrap() {
     setLoading(true);
     try {
@@ -122,12 +180,15 @@ export default function HomePage() {
   async function loadProject(projectId: string) {
     setLoadingProject(true);
     setError(null);
+    setActiveRunId(null);
     try {
-      const [loadedProject, loadedFiles, loadedEvents, loadedResults] = await Promise.all([
+      const [loadedProject, loadedFiles, loadedEvents, loadedResults, loadedConversation, loadedModelConfig] = await Promise.all([
         api.getProject(projectId),
         api.listFiles(projectId),
         api.activity(projectId),
         api.results(projectId),
+        api.getConversation(projectId),
+        api.modelConfig(),
       ]);
       setActiveProjectId(projectId);
       window.localStorage.setItem("circuitpilot.activeProject", projectId);
@@ -137,6 +198,12 @@ export default function HomePage() {
       setFiles(loadedFiles);
       setEvents(loadedEvents);
       setResults(loadedResults);
+      setConversation(loadedConversation);
+      setModelConfig(loadedModelConfig);
+      setAgentRun(loadedConversation.latest_run);
+      if (loadedConversation.latest_run?.status === "queued" || loadedConversation.latest_run?.status === "running") {
+        setActiveRunId(loadedConversation.latest_run.id);
+      }
       setTab("files");
       const firstFile = loadedFiles[0];
       if (firstFile) {
@@ -153,6 +220,79 @@ export default function HomePage() {
       setError(errorMessage(caught));
     } finally {
       setLoadingProject(false);
+    }
+  }
+
+  async function refreshConversation(projectId: string = activeProjectId || "") {
+    if (!projectId) return;
+    setConversationLoading(true);
+    try {
+      const loaded = await api.getConversation(projectId);
+      setConversation(loaded);
+      setAgentRun(loaded.latest_run);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setConversationLoading(false);
+    }
+  }
+
+  async function sendMessage() {
+    if (!project || !messageDraft.trim() || sendingMessage || activeRunId || !modelConfig?.configured) return;
+    setSendingMessage(true);
+    setError(null);
+    try {
+      const run = await api.sendMessage(project.id, messageDraft.trim());
+      setMessageDraft("");
+      setAgentRun(run);
+      setActiveRunId(run.id);
+      setTab("assistant");
+      await refreshConversation(project.id);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  async function testConnection() {
+    setTestingConnection(true);
+    setError(null);
+    try {
+      await api.testModelConnection();
+      setModelConfig(await api.modelConfig());
+      setNotice("Meta connection confirmed");
+    } catch (caught) {
+      setError(errorMessage(caught));
+      try { setModelConfig(await api.modelConfig()); } catch { /* retain the prior status */ }
+    } finally {
+      setTestingConnection(false);
+    }
+  }
+
+  async function cancelRun() {
+    if (!project || !agentRun || !activeRunId) return;
+    try {
+      const run = await api.cancelRun(project.id, agentRun.id);
+      setAgentRun(run);
+      setNotice("Cancellation requested");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  async function retryRun() {
+    if (!project || !agentRun || sendingMessage || activeRunId) return;
+    setSendingMessage(true);
+    setError(null);
+    try {
+      const run = await api.retryRun(project.id, agentRun.id);
+      setAgentRun(run);
+      setActiveRunId(run.id);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSendingMessage(false);
     }
   }
 
@@ -386,7 +526,7 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 1 foundation</div>
+          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 2 model conversation</div>
         </aside>
 
         <section className="workspace">
@@ -412,7 +552,7 @@ export default function HomePage() {
                   <div className="topbar-actions">
                     <div className={`save-state ${hasUnsaved ? "unsaved" : ""}`}><span className="save-dot" />{hasUnsaved ? "Unsaved changes" : "All changes saved"}</div>
                     {detailsDirty && <button className="button" onClick={() => void saveProjectDetails()} disabled={savingDetails}><Save size={14} /> {savingDetails ? "Saving…" : "Save details"}</button>}
-                    <button className="button" title="Agent execution is not connected in Phase 1" disabled><Sparkles size={14} /> Build circuit</button>
+                    <button className="button" title="RTL generation, simulation, and synthesis are not connected yet" disabled><Sparkles size={14} /> Build circuit</button>
                     <button className="button danger" onClick={() => void deleteProject()}><Trash2 size={14} /> Delete</button>
                   </div>
                 </header>
@@ -429,12 +569,40 @@ export default function HomePage() {
 
                 <section className="tabs-shell" aria-label="Project workspace">
                   <div className="tabs" role="tablist">
+                    <button className={`tab ${tab === "assistant" ? "active" : ""}`} role="tab" aria-selected={tab === "assistant"} onClick={() => setTab("assistant")}><Bot size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Assistant</button>
                     <button className={`tab ${tab === "files" ? "active" : ""}`} role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}><Code2 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Files</button>
                     <button className={`tab ${tab === "activity" ? "active" : ""}`} role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}><History size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Activity</button>
                     <button className={`tab ${tab === "results" ? "active" : ""}`} role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}><Layers3 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Results</button>
                   </div>
 
                   <div className="tab-content">
+                    {tab === "assistant" && <div className="conversation-panel">
+                      <div className="conversation-header">
+                        <div>
+                          <div className="section-title">Project assistant</div>
+                          <div className="section-meta">Real Meta responses grounded in this project&apos;s saved data</div>
+                        </div>
+                        <div className="conversation-header-actions">
+                          <div className={`model-status ${modelConfig?.status || "loading"}`}><span className="status-dot" />{modelConfig ? modelStatusLabel(modelConfig.status) : "Checking setup…"}</div>
+                          {modelConfig?.configured && <button className="button" onClick={() => void testConnection()} disabled={testingConnection}><Wifi size={13} /> {testingConnection ? "Testing…" : "Test connection"}</button>}
+                        </div>
+                      </div>
+                      {!modelConfig?.configured ? <div className="empty-state conversation-empty"><div className="empty-state-inner"><div className="empty-icon"><Bot size={20} /></div><div className="empty-title">Model access is not configured</div><div className="empty-copy">Add the backend-only model key to the local environment, restart FastAPI, and then use Test connection. No provider request is made automatically.</div></div></div> : <>
+                        <div className="model-notice"><Wifi size={14} /><span>{modelConfig.message}</span><span className="model-name">{modelConfig.model}</span></div>
+                        <div className="conversation-body" aria-live="polite">
+                          {conversationLoading ? <div className="conversation-loading"><div className="spinner" /> Loading conversation…</div> : conversation?.messages.length ? conversation.messages.map((message) => (
+                            <div className={`chat-message ${message.role}`} key={message.id}>
+                              <div className="chat-label">{message.role === "user" ? "You" : "CircuitPilot"}<span>{readableDate(message.created_at)}</span></div>
+                              <div className="chat-content">{message.content}</div>
+                            </div>
+                          )) : <div className="conversation-empty-copy"><Bot size={17} /><span>Ask about the current requirements, interfaces, or saved source files. The assistant can inspect them with read-only tools.</span></div>}
+                          {agentRun && (agentRun.status === "queued" || agentRun.status === "running") && <div className="run-card"><div className="run-card-heading"><span className="running-indicator"><span className="pulse-dot" />{agentRun.status === "queued" ? "Queued" : "Working"}</span><span>{agentRun.model}</span></div><div className="run-events">{agentRun.events.slice(-4).map((event) => <div className="run-event" key={event.id}><span className="event-check">·</span><span>{event.summary}</span></div>)}</div><button className="button danger" onClick={() => void cancelRun()}><Square size={12} fill="currentColor" /> Cancel request</button></div>}
+                          {agentRun?.status === "completed" && <div className="run-complete"><Check size={14} /><span>Last request completed</span>{agentRun.usage.total_tokens !== null && <span className="usage-line">Provider usage · {agentRun.usage.prompt_tokens ?? "—"} prompt / {agentRun.usage.completion_tokens ?? "—"} completion / {agentRun.usage.total_tokens} total tokens</span>}</div>}
+                          {agentRun && ["failed", "cancelled", "interrupted", "incomplete"].includes(agentRun.status) && <div className="run-error"><div><strong>{runStatusLabel(agentRun.status)}</strong><span>{agentRun.error_message || "The request did not complete."}</span></div><button className="button" onClick={() => void retryRun()} disabled={sendingMessage}><RefreshCw size={13} /> Retry</button></div>}
+                        </div>
+                        <div className="conversation-composer"><textarea aria-label="Message CircuitPilot" placeholder="Ask about this circuit project…" value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void sendMessage(); }} disabled={Boolean(activeRunId) || sendingMessage} /><div className="composer-footer"><span>Read-only project tools · Ctrl/⌘ + Enter to send</span><button className="button primary" onClick={() => void sendMessage()} disabled={!messageDraft.trim() || Boolean(activeRunId) || sendingMessage}><Send size={13} /> {sendingMessage ? "Starting…" : "Send"}</button></div></div>
+                      </>}
+                    </div>}
                     {tab === "files" && <div className="files-layout">
                       <div className="file-tree" aria-label="Project files">
                         <div className="file-tree-heading"><span>Source files</span><button className="icon-button" aria-label="Create file" title="Create file" onClick={() => { setModalError(null); setModal("file"); }}><FilePlus2 size={15} /></button></div>
@@ -454,7 +622,7 @@ export default function HomePage() {
                       </div>
                     </div>}
                     {tab === "activity" && <div className="activity-list">{events.length === 0 ? <div className="empty-state"><div className="empty-state-inner"><div className="empty-icon"><History size={20} /></div><div className="empty-title">No project activity yet</div><div className="empty-copy">Saved project actions will appear here. Agent execution events are intentionally not shown until that capability exists.</div></div></div> : events.map((event) => <div className="activity-event" key={event.id}><span className="activity-dot" /><div><div className="activity-summary">{event.summary}</div><div className="activity-type">{eventLabel(event)}</div></div><span className="activity-time" title={readableDate(event.created_at)}>{relativeDate(event.created_at)}</span></div>)}</div>}
-                    {tab === "results" && <div className="results-panel"><div className="build-note"><div className="build-note-title"><Info size={17} color="#5dc9c0" /> Execution is not connected yet</div><p>{results?.message || "Simulation and synthesis results will appear here after the Meta-agent execution phase is connected. Phase 1 stores your real project data without inventing runs or verification results."}</p></div></div>}
+                    {tab === "results" && <div className="results-panel"><div className="build-note"><div className="build-note-title"><Info size={17} color="#5dc9c0" /> Simulation is not connected yet</div><p>{results?.message || "Simulation and synthesis results will appear here in a later execution phase. Phase 2 conversations do not invent runs, waveforms, or verification results."}</p></div></div>}
                   </div>
                 </section>
               </>
