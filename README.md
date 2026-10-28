@@ -43,7 +43,7 @@ The application starts without a model key. Keep `MODEL_API_KEY` in this backend
 | `ALLOWED_ORIGINS` | Comma-separated browser origins allowed by FastAPI CORS |
 | `MODEL_API_KEY` | Backend-only Meta API key; optional until conversations are needed |
 | `META_BASE_URL` | Defaults to `https://api.meta.ai/v1` |
-| `META_MODEL` | Defaults to `muse-spark-1.3` |
+| `META_MODEL` | Defaults to `muse-spark-1.3-contributor` |
 | `MODEL_TIMEOUT_SECONDS` | Provider request timeout |
 | `MAX_MODEL_ROUNDS` | Maximum model turns in one bounded run |
 | `MAX_TOOL_CALLS` | Maximum read-only tool calls across one run |

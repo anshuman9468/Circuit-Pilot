@@ -60,7 +60,7 @@ class Settings:
     max_requirements_size: int = 128 * 1024
     model_api_key: str | None = None
     meta_base_url: str = "https://api.meta.ai/v1"
-    meta_model: str = "muse-spark-1.3"
+    meta_model: str = "muse-spark-1.3-contributor"
     model_timeout_seconds: float = 45.0
     max_model_rounds: int = 6
     max_tool_calls: int = 12
@@ -106,7 +106,7 @@ class Settings:
             allowed_origins=origins,
             model_api_key=_env("MODEL_API_KEY", local=local) or None,
             meta_base_url=_env("META_BASE_URL", "https://api.meta.ai/v1", local) or "https://api.meta.ai/v1",
-            meta_model=_env("META_MODEL", "muse-spark-1.3", local) or "muse-spark-1.3",
+            meta_model=_env("META_MODEL", "muse-spark-1.3-contributor", local) or "muse-spark-1.3-contributor",
             model_timeout_seconds=float(_env("MODEL_TIMEOUT_SECONDS", "45", local) or "45"),
             max_model_rounds=int(_env("MAX_MODEL_ROUNDS", "6", local) or "6"),
             max_tool_calls=int(_env("MAX_TOOL_CALLS", "12", local) or "12"),
