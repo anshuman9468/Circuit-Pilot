@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .specification import CircuitSpecification, ValidationReport
+
 
 MAX_TEXT_CHARS = 262_144
 
@@ -196,3 +198,56 @@ class ReadFileToolArgs(BaseModel):
         if self.start_line is not None and self.end_line is not None and self.end_line < self.start_line:
             raise ValueError("end_line must be greater than or equal to start_line")
         return self
+
+
+class SpecificationSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    specification: CircuitSpecification
+
+
+class SpecificationValidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    specification: CircuitSpecification
+
+
+class SpecificationReadyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+
+
+class ClarificationAnswerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    answer: Any
+
+
+class SpecificationResponse(BaseModel):
+    specification: CircuitSpecification
+    validation: ValidationReport
+    status: str
+    current_revision: int
+    ready_revision: int | None = None
+
+
+class SpecificationRevisionSummary(BaseModel):
+    revision: int
+    status: str
+    schema_version: str
+    created_at: str
+    updated_at: str
+    ready_at: str | None = None
+
+
+class SpecificationRevisionResponse(SpecificationResponse):
+    revision_id: str
+
+
+class SpecificationExportResponse(BaseModel):
+    specification: CircuitSpecification
+    validation: ValidationReport
+    exported_at: str

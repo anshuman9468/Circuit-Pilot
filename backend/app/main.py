@@ -8,6 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .api import router, validation_error_response
 from .conversation_api import router as conversation_router
+from .specification_api import router as specification_router
 from .config import Settings, settings
 from .db import create_database, initialize_database
 from .errors import ApiError
@@ -69,6 +70,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(router)
     app.include_router(conversation_router)
+    app.include_router(specification_router)
 
     @app.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError):

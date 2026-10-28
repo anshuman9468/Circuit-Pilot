@@ -1,8 +1,8 @@
 # CircuitPilot
 
-CircuitPilot is a local, single-user digital hardware engineering workspace. Phase 2 adds a real, backend-only Meta model connection and durable project conversations on top of the Phase 1 project, requirements, and source-file foundation.
+CircuitPilot is a local, single-user digital hardware engineering workspace. Phase 3 adds an offline, persisted requirements and design-planning workflow on top of the Phase 1 project foundation and Phase 2 conversation integration.
 
-The assistant can discuss a project and use three read-only, project-bound tools to inspect saved requirements and text files. It does not generate RTL, write files, execute commands, simulate, synthesize, or claim verification results yet.
+The assistant can discuss a project and use three read-only, project-bound tools to inspect saved requirements and text files. The Specification view lets a user turn a natural-language request into a versioned structured specification, module plan, and planned verification objectives using deterministic validation. It does not generate RTL, write files, execute commands, simulate, synthesize, or claim verification results.
 
 ## Prerequisites
 
@@ -83,6 +83,14 @@ The model status is visible in the Assistant tab. Use **Test connection** for an
 
 If no key is configured, the UI shows **Not configured**. With a key present but no test yet it shows **Configured · not tested**. A successful explicit test or conversation changes the process status to **Connected**. Provider token counts are displayed only when Meta reports them; they are not estimates and no cost is calculated.
 
+Phase 3 does not need a model key and makes no model calls. Open a project and select **Specification**. Work through Overview, Parameters and ports, Clocks and resets, Functional behavior, Module-level design plan, Assumptions and open questions, and Verification plan. Each section has explicit editing controls and the bottom **Save draft** action creates a new immutable snapshot revision. **Validate** runs only deterministic structural checks. Open clarifications identify missing or contradictory fields and can be answered directly when a guided answer is available.
+
+Use **Mark ready** only after saving a draft and resolving all blocking findings. A ready revision is an explicit user review state, not proof that the hardware is correct. Editing a ready revision creates a new draft while preserving the earlier ready revision. The revision selector reopens prior snapshots, and **JSON preview** / **Export** exposes the versioned schema for inspection.
+
+The specification schema is versioned as `1.0` and includes the original request, design category, parameters, ports, clocks, reset intent/signals, requirements, timing and boundaries, assumptions, open questions, module connections, and planned verification objectives. Widths are positive integers or simple parameter references; no arbitrary expressions are evaluated. Entries record whether they came from the user, an accepted assumption, or a future planner proposal. Validation checks identifiers, references, top-level/module structure, known width mismatches, and requirement coverage. It cannot establish that the written specification captures every semantic intent or that a circuit is correct.
+
+The future requirements planner will implement the provider-independent `RequirementsPlanner` interface in `backend/app/services/interfaces.py`. Its validated proposal contract can contain specification changes, assumptions, clarification questions, modules, and verification objectives. Phase 3 uses no planner implementation and never silently replaces reviewed user fields.
+
 ## Available read-only tools
 
 The model receives only these tools, all bound by backend code to the currently open project:
@@ -97,7 +105,7 @@ The backend validates tool JSON with Pydantic, rejects unknown fields and invali
 
 By default, runtime data is stored under `data/`:
 
-- `data/circuitpilot.db` stores projects, requirements, file metadata, project events, conversations, protocol messages, runs, and run events.
+- `data/circuitpilot.db` stores projects, requirements, file metadata, project events, conversations, protocol messages, runs, run events, current specification pointers, validation reports, and immutable specification revisions.
 - `data/workspaces/<project-id>/` stores the actual project text files.
 
 The data directory is ignored by Git. Saved assistant-visible messages are persisted, while complete assistant tool-call and matching tool-response protocol records are retained separately for valid future continuation. Interrupted queued/running runs are marked `interrupted` on the next backend startup.
@@ -119,10 +127,10 @@ npm run typecheck
 npm run build
 ```
 
-The test suite covers project isolation, persistence, tool ordering and binding, malformed/invalid tool arguments, provider error mapping, limits, cancellation, retry, and interrupted-run recovery. Live Meta connectivity is not part of the automated test suite; run the explicit UI test only after configuring a real backend key.
+The test suite covers project isolation, persistence, tool ordering and binding, malformed/invalid tool arguments, provider error mapping, limits, cancellation, retry, interrupted-run recovery, structured validation, clarification resolution, module/port references, symbolic widths, revision history, readiness gates, and revision conflicts. Live Meta connectivity is not part of the automated test suite. Phase 3 verification intentionally performs no provider request.
 
 ## Phase boundaries
 
-Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery.
+Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery. Phase 3 adds the offline structured specification editor, deterministic clarifications, module plan, verification plan, JSON export, immutable revisions, and readiness review.
 
-The next phase can add carefully sandboxed RTL generation and file-writing tools, followed by tool runners for simulation and synthesis, artifact references, actual verification evidence, and autonomous repair. Those capabilities remain intentionally disabled here; **Build circuit** is visible but cannot run.
+The next phase can connect the requirements planner to the Meta integration, followed by carefully sandboxed RTL generation and file-writing tools, tool runners for simulation and synthesis, artifact references, actual verification evidence, and autonomous repair. Those capabilities remain intentionally disabled here; **Build circuit** is visible but cannot run.

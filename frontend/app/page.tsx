@@ -7,6 +7,7 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  ClipboardList,
   Code2,
   FileCode2,
   FilePlus2,
@@ -30,6 +31,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
 import { ActivityEvent, AgentRun, api, Conversation, ModelConfig, Project, ProjectFile, ProjectSummary, Results } from "../lib/api";
+import SpecificationPanel from "../components/SpecificationPanel";
 
 const CodeEditor = dynamic(() => import("../components/CodeEditor"), {
   ssr: false,
@@ -40,7 +42,7 @@ const EXAMPLE_REQUIREMENTS = `Design a synchronous, parameterized digital block.
 
 Describe the clock and reset behavior, the input and output signals, configurable parameters, and any timing or protocol requirements. Include edge cases that should be considered during later verification.`;
 
-type Tab = "assistant" | "files" | "activity" | "results";
+type Tab = "assistant" | "specification" | "files" | "activity" | "results";
 type Modal = "project" | "file" | "rename" | null;
 
 function readableDate(value: string): string {
@@ -115,11 +117,12 @@ export default function HomePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [specificationDirty, setSpecificationDirty] = useState(false);
 
   const requirementsDirty = project ? requirementsDraft !== project.requirements : false;
   const detailsDirty = project ? projectDraft.name !== project.name || projectDraft.description !== project.description : false;
   const fileDirty = activeFile ? fileDraft !== fileContent : false;
-  const hasUnsaved = requirementsDirty || detailsDirty || fileDirty;
+  const hasUnsaved = requirementsDirty || detailsDirty || fileDirty || specificationDirty;
 
   useEffect(() => {
     void bootstrap();
@@ -195,6 +198,7 @@ export default function HomePage() {
       setProject(loadedProject);
       setProjectDraft({ name: loadedProject.name, description: loadedProject.description });
       setRequirementsDraft(loadedProject.requirements);
+      setSpecificationDirty(false);
       setFiles(loadedFiles);
       setEvents(loadedEvents);
       setResults(loadedResults);
@@ -526,7 +530,7 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 2 model conversation</div>
+          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 3 structured planning</div>
         </aside>
 
         <section className="workspace">
@@ -570,6 +574,7 @@ export default function HomePage() {
                 <section className="tabs-shell" aria-label="Project workspace">
                   <div className="tabs" role="tablist">
                     <button className={`tab ${tab === "assistant" ? "active" : ""}`} role="tab" aria-selected={tab === "assistant"} onClick={() => setTab("assistant")}><Bot size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Assistant</button>
+                    <button className={`tab ${tab === "specification" ? "active" : ""}`} role="tab" aria-selected={tab === "specification"} onClick={() => setTab("specification")}><ClipboardList size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Specification</button>
                     <button className={`tab ${tab === "files" ? "active" : ""}`} role="tab" aria-selected={tab === "files"} onClick={() => setTab("files")}><Code2 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Files</button>
                     <button className={`tab ${tab === "activity" ? "active" : ""}`} role="tab" aria-selected={tab === "activity"} onClick={() => setTab("activity")}><History size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Activity</button>
                     <button className={`tab ${tab === "results" ? "active" : ""}`} role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}><Layers3 size={14} style={{ verticalAlign: "-2px", marginRight: 6 }} /> Results</button>
@@ -603,6 +608,7 @@ export default function HomePage() {
                         <div className="conversation-composer"><textarea aria-label="Message CircuitPilot" placeholder="Ask about this circuit project…" value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void sendMessage(); }} disabled={Boolean(activeRunId) || sendingMessage} /><div className="composer-footer"><span>Read-only project tools · Ctrl/⌘ + Enter to send</span><button className="button primary" onClick={() => void sendMessage()} disabled={!messageDraft.trim() || Boolean(activeRunId) || sendingMessage}><Send size={13} /> {sendingMessage ? "Starting…" : "Send"}</button></div></div>
                       </>}
                     </div>}
+                    {tab === "specification" && <SpecificationPanel projectId={project.id} onDirtyChange={setSpecificationDirty} onActivityChanged={() => void refreshActivity(project.id)} />}
                     {tab === "files" && <div className="files-layout">
                       <div className="file-tree" aria-label="Project files">
                         <div className="file-tree-heading"><span>Source files</span><button className="icon-button" aria-label="Create file" title="Create file" onClick={() => { setModalError(null); setModal("file"); }}><FilePlus2 size={15} /></button></div>

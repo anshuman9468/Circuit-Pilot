@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
+from ..specification import PlannerContext, PlannerProposal
 
 class ModelClient(Protocol):
     async def complete(
@@ -19,6 +20,12 @@ class ModelClient(Protocol):
 
 class AgentOrchestrator(Protocol):
     async def plan(self, project_id: str, workspace: Path) -> None: ...
+
+
+class RequirementsPlanner(Protocol):
+    """Future provider-independent boundary; Phase 3 never instantiates it."""
+
+    async def propose(self, context: PlannerContext) -> PlannerProposal: ...
 
 
 class ToolRunner(Protocol):

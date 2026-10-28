@@ -95,6 +95,199 @@ export type ConnectionTest = {
   total_tokens: number | null;
 };
 
+export type SpecificationSource = "user" | "assumption" | "planner";
+export type DesignCategory = "combinational" | "sequential" | "mixed" | "unspecified";
+export type SpecificationStatus = "draft" | "ready";
+export type Width = number | string | null;
+
+export type SpecificationParameter = {
+  id: string;
+  name: string;
+  default_value: number | string | null;
+  width: Width;
+  constraints: string[];
+  notes: string;
+  source: SpecificationSource;
+};
+
+export type SpecificationPort = {
+  id: string;
+  name: string;
+  direction: "input" | "output" | "inout" | "unspecified";
+  width: Width;
+  signedness: "signed" | "unsigned" | "unspecified";
+  purpose: string;
+  source: SpecificationSource;
+};
+
+export type ClockDomain = {
+  id: string;
+  name: string;
+  signal: string;
+  frequency_hz: number | null;
+  edge: "rising" | "falling" | "either" | "unspecified";
+  source: SpecificationSource;
+};
+
+export type ResetSignal = {
+  id: string;
+  name: string;
+  signal: string;
+  polarity: "active_high" | "active_low" | "unspecified";
+  behavior: "synchronous" | "asynchronous" | "unspecified";
+  associated_clock_domain: string | null;
+  intended_reset_state: number | null;
+  source: SpecificationSource;
+};
+
+export type FunctionalRequirement = {
+  id: string;
+  title: string;
+  statement: string;
+  source: SpecificationSource;
+};
+
+export type TimingExpectations = {
+  latency_cycles: number | null;
+  max_latency_cycles: number | null;
+  throughput: string;
+  notes: string;
+  source: SpecificationSource;
+};
+
+export type BoundaryBehavior = {
+  id: string;
+  condition: string;
+  behavior: string;
+  source: SpecificationSource;
+};
+
+export type Assumption = {
+  id: string;
+  text: string;
+  accepted: boolean;
+  source: SpecificationSource;
+};
+
+export type OpenQuestion = {
+  id: string;
+  question: string;
+  related_field: string;
+  severity: "blocking" | "advisory";
+  status: "open" | "resolved";
+  answer: string;
+  source: SpecificationSource;
+};
+
+export type ModuleConnection = {
+  id: string;
+  from_module: string;
+  from_port: string;
+  to_module: string;
+  to_port: string;
+  notes: string;
+  source: SpecificationSource;
+};
+
+export type ModulePlan = {
+  id: string;
+  name: string;
+  responsibility: string;
+  input_ports: string[];
+  output_ports: string[];
+  requirement_ids: string[];
+  internal_state: string;
+  dependencies: string[];
+  connections: ModuleConnection[];
+  design_notes: string;
+  is_top_level: boolean;
+  source: SpecificationSource;
+};
+
+export type VerificationObjective = {
+  id: string;
+  title: string;
+  requirement_ids: string[];
+  preconditions: string;
+  stimulus: string;
+  expected_behavior: string;
+  check_type: "directed" | "boundary" | "reset" | "sequence" | "invariant" | "unspecified";
+  notes: string;
+  source: SpecificationSource;
+};
+
+export type CircuitSpecification = {
+  specification_id: string;
+  project_id: string;
+  schema_version: string;
+  revision: number;
+  status: SpecificationStatus;
+  created_at: string | null;
+  updated_at: string | null;
+  original_request: string;
+  circuit_name: string;
+  purpose: string;
+  design_category: DesignCategory;
+  parameters: SpecificationParameter[];
+  ports: SpecificationPort[];
+  clock_domains: ClockDomain[];
+  reset_intent: "required" | "not_intended" | "unspecified";
+  reset_signals: ResetSignal[];
+  functional_requirements: FunctionalRequirement[];
+  timing: TimingExpectations | null;
+  boundary_behaviors: BoundaryBehavior[];
+  assumptions: Assumption[];
+  open_questions: OpenQuestion[];
+  modules: ModulePlan[];
+  verification_objectives: VerificationObjective[];
+};
+
+export type Clarification = {
+  id: string;
+  related_field: string;
+  field_path: string;
+  reason: string;
+  severity: "blocking" | "advisory";
+  expected_answer_type: "text" | "choice" | "positive_integer_or_parameter" | "boolean" | "object";
+  status: "open" | "resolved";
+  code: string;
+};
+
+export type ValidationReport = {
+  valid: boolean;
+  blocking_count: number;
+  advisory_count: number;
+  generated_at: string;
+  findings: Clarification[];
+  limitation: string;
+};
+
+export type SpecificationResponse = {
+  specification: CircuitSpecification;
+  validation: ValidationReport;
+  status: SpecificationStatus;
+  current_revision: number;
+  ready_revision: number | null;
+};
+
+export type SpecificationRevisionSummary = {
+  revision: number;
+  status: SpecificationStatus;
+  schema_version: string;
+  created_at: string;
+  updated_at: string;
+  ready_at: string | null;
+};
+
+export type SpecificationRevisionResponse = {
+  revision_id: string;
+  specification: CircuitSpecification;
+  validation: ValidationReport;
+  status: SpecificationStatus;
+  current_revision: number;
+  ready_revision: number | null;
+};
+
 const configuredBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const API_BASE = configuredBase.endsWith("/") ? configuredBase.slice(0, -1) : configuredBase;
 
@@ -110,7 +303,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    const message = body?.error?.message || "The request could not be completed.";
+    const baseMessage = body?.error?.message || "The request could not be completed.";
+    const details = body?.error?.details;
+    const detailMessage = Array.isArray(details)
+      ? details.map((item) => `${Array.isArray(item?.location) ? item.location.join(".") : ""}: ${item?.message || "Invalid value"}`).join("; ")
+      : "";
+    const message = detailMessage ? `${baseMessage} ${detailMessage}` : baseMessage;
     throw new Error(message);
   }
   return body as T;
@@ -159,4 +357,31 @@ export const api = {
     request<AgentRun>(`/projects/${projectId}/runs/${runId}/cancel`, { method: "POST" }),
   retryRun: (projectId: string, runId: string) =>
     request<AgentRun>(`/projects/${projectId}/runs/${runId}/retry`, { method: "POST" }),
+  getSpecification: (id: string) => request<SpecificationResponse>(`/projects/${id}/specification`),
+  saveSpecification: (id: string, expectedRevision: number, specification: CircuitSpecification) =>
+    request<SpecificationResponse>(`/projects/${id}/specification`, {
+      method: "PUT",
+      body: JSON.stringify({ expected_revision: expectedRevision, specification }),
+    }),
+  validateSpecification: (id: string, specification: CircuitSpecification) =>
+    request<SpecificationResponse>(`/projects/${id}/specification/validate`, {
+      method: "POST",
+      body: JSON.stringify({ specification }),
+    }),
+  listSpecificationRevisions: (id: string) =>
+    request<SpecificationRevisionSummary[]>(`/projects/${id}/specification/revisions`),
+  getSpecificationRevision: (id: string, revision: number) =>
+    request<SpecificationRevisionResponse>(`/projects/${id}/specification/revisions/${revision}`),
+  answerSpecificationClarification: (id: string, clarificationId: string, expectedRevision: number, answer: unknown) =>
+    request<SpecificationResponse>(`/projects/${id}/specification/clarifications/${encodeURIComponent(clarificationId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ expected_revision: expectedRevision, answer }),
+    }),
+  markSpecificationReady: (id: string, expectedRevision: number) =>
+    request<SpecificationResponse>(`/projects/${id}/specification/ready`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    }),
+  exportSpecification: (id: string) =>
+    request<{ specification: CircuitSpecification; validation: ValidationReport; exported_at: string }>(`/projects/${id}/specification/export`),
 };

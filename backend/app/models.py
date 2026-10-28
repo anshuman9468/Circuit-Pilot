@@ -36,6 +36,9 @@ class Project(Base):
         back_populates="project", cascade="all, delete-orphan"
     )
     runs: Mapped[list["Run"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    specifications: Mapped[list["Specification"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class ProjectFile(Base):
@@ -186,3 +189,51 @@ class AgentRunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     run: Mapped[AgentRun] = relationship(back_populates="events")
+
+
+class Specification(Base):
+    """One project-scoped specification with immutable revision records."""
+
+    __tablename__ = "specifications"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    current_revision_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    ready_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    project: Mapped[Project] = relationship(back_populates="specifications")
+    revisions: Mapped[list["SpecificationRevision"]] = relationship(
+        back_populates="specification", cascade="all, delete-orphan", order_by="SpecificationRevision.revision"
+    )
+
+
+class SpecificationRevision(Base):
+    """A saved specification snapshot. Ready revisions are never modified."""
+
+    __tablename__ = "specification_revisions"
+    __table_args__ = (UniqueConstraint("specification_id", "revision", name="uq_specification_revision"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    specification_id: Mapped[str] = mapped_column(
+        ForeignKey("specifications.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    data_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    validation_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    specification: Mapped[Specification] = relationship(back_populates="revisions")

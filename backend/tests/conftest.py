@@ -14,7 +14,9 @@ def app_settings(tmp_path):
         workspace_root=tmp_path / "workspaces",
         allowed_origins=("http://testserver",),
         max_file_size=256,
-        max_request_size=600,
+        # Specifications are structured JSON documents and are intentionally
+        # larger than the small file/requirements limits exercised below.
+        max_request_size=32 * 1024,
         max_requirements_size=300,
     )
 
@@ -33,4 +35,3 @@ def create_project(client, name="Counter Core", requirements="Implement a synchr
     )
     assert response.status_code == 201, response.text
     return response.json()
-
