@@ -13,6 +13,7 @@ class ModelClient(Protocol):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         max_completion_tokens: int,
+        response_format: dict[str, Any] | None = None,
     ) -> Any: ...
 
     async def test_connection(self) -> Any: ...
@@ -23,9 +24,9 @@ class AgentOrchestrator(Protocol):
 
 
 class RequirementsPlanner(Protocol):
-    """Future provider-independent boundary; Phase 3 never instantiates it."""
+    """Provider-independent boundary for structured specification proposals."""
 
-    async def propose(self, context: PlannerContext) -> PlannerProposal: ...
+    async def propose(self, context: PlannerContext, correction: str | None = None) -> PlannerProposal: ...
 
 
 class ToolRunner(Protocol):

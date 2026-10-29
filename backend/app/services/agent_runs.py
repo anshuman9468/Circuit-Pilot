@@ -292,10 +292,11 @@ async def execute_run(app, run_id: str) -> None:
             return
 
         definitions = tool_registry.definitions()
+        provider_label = getattr(provider, "provider_label", "model")
         for round_number in range(1, settings.max_model_rounds + 1):
             _check_cancelled(session, run)
             run.rounds = round_number
-            append_event(session, run, "model_request", f"Requesting Meta model round {round_number}")
+            append_event(session, run, "model_request", f"Requesting {provider_label} round {round_number}")
             session.commit()
             started = time.monotonic()
             try:
@@ -310,6 +311,7 @@ async def execute_run(app, run_id: str) -> None:
                 return
             app.state.model_connection_status = "connected"
             app.state.model_last_error = None
+            run.model = getattr(provider, "model", run.model)
             duration_ms = int((time.monotonic() - started) * 1000)
             _add_usage(run, response)
             run.provider_request_id = response.request_id
@@ -317,14 +319,14 @@ async def execute_run(app, run_id: str) -> None:
                 session,
                 run,
                 "model_response",
-                "Received Meta model response",
+                f"Received {getattr(provider, 'provider_label', 'model')} response",
                 {"duration_ms": duration_ms, "finish_reason": response.finish_reason, "tool_calls": len(response.tool_calls)},
             )
             session.commit()
 
             if not response.tool_calls:
                 if not response.content:
-                    _fail(session, run, "malformed_provider_response", "Meta returned neither an answer nor a tool call.")
+                    _fail(session, run, "malformed_provider_response", "The provider returned neither an answer nor a tool call.")
                     return
                 append_message(
                     session,

@@ -45,6 +45,9 @@ class Project(Base):
     generation_proposals: Mapped[list["GenerationProposal"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    specification_planner_runs: Mapped[list["SpecificationPlannerRun"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class ProjectFile(Base):
@@ -243,6 +246,55 @@ class SpecificationRevision(Base):
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     specification: Mapped[Specification] = relationship(back_populates="revisions")
+
+
+class SpecificationPlannerRun(Base):
+    """A persisted Meta planning proposal; it never mutates a specification by itself."""
+
+    __tablename__ = "specification_planner_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    base_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_instruction: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    state: Mapped[str] = mapped_column(String(30), nullable=False, default="queued")
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correction_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    proposal_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    validation_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    project: Mapped[Project] = relationship(back_populates="specification_planner_runs")
+    events: Mapped[list["SpecificationPlannerEvent"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="SpecificationPlannerEvent.created_at"
+    )
+
+
+class SpecificationPlannerEvent(Base):
+    __tablename__ = "specification_planner_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("specification_planner_runs.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    summary: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    run: Mapped[SpecificationPlannerRun] = relationship(back_populates="events")
 
 
 class GenerationJob(Base):

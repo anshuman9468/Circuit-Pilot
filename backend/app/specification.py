@@ -517,6 +517,7 @@ class PlannerContext(BaseModel):
     specification: CircuitSpecification
     clarification_answers: list[dict[str, Any]] = Field(default_factory=list)
     project_context: dict[str, Any] = Field(default_factory=dict)
+    user_instruction: str = ""
 
 
 class PlannerProposal(BaseModel):
@@ -527,3 +528,4 @@ class PlannerProposal(BaseModel):
     clarification_questions: list[OpenQuestion] = Field(default_factory=list)
     proposed_modules: list[ModulePlan] = Field(default_factory=list)
     proposed_verification_objectives: list[VerificationObjective] = Field(default_factory=list)
+    summary: str = Field(default="", max_length=4000)

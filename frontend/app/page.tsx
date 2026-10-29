@@ -265,7 +265,7 @@ export default function HomePage() {
     try {
       await api.testModelConnection();
       setModelConfig(await api.modelConfig());
-      setNotice("Meta connection confirmed");
+      setNotice("Model connection confirmed");
     } catch (caught) {
       setError(errorMessage(caught));
       try { setModelConfig(await api.modelConfig()); } catch { /* retain the prior status */ }
@@ -597,7 +597,7 @@ export default function HomePage() {
                       <div className="conversation-header">
                         <div>
                           <div className="section-title">Project assistant</div>
-                          <div className="section-meta">Real Meta responses grounded in this project&apos;s saved data</div>
+                          <div className="section-meta">Real model responses grounded in this project&apos;s saved data</div>
                         </div>
                         <div className="conversation-header-actions">
                           <div className={`model-status ${modelConfig?.status || "loading"}`}><span className="status-dot" />{modelConfig ? modelStatusLabel(modelConfig.status) : "Checking setup…"}</div>

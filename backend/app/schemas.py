@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .specification import CircuitSpecification, ValidationReport
+from .specification import CircuitSpecification, PlannerProposal, ValidationReport
 from .generation import GenerationClarification, GenerationResult
 
 
@@ -131,6 +131,8 @@ class ModelConfigResponse(BaseModel):
     base_url: str
     message: str
     last_error: str | None = None
+    provider: str = "Meta"
+    fallback_configured: bool = False
 
 
 class ConnectionTestResponse(BaseModel):
@@ -252,6 +254,74 @@ class SpecificationExportResponse(BaseModel):
     specification: CircuitSpecification
     validation: ValidationReport
     exported_at: str
+
+
+class SpecificationPlannerConfigResponse(BaseModel):
+    enabled: bool
+    configured: bool
+    status: str
+    provider: str
+    model: str
+    message: str
+
+
+class SpecificationPlannerStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    instruction: str = Field(default="", max_length=12_000)
+
+
+class SpecificationPlannerEventResponse(BaseModel):
+    id: str
+    event_type: str
+    summary: str
+    metadata: dict[str, Any] | None = None
+    created_at: str
+
+
+class SpecificationPlannerResponse(BaseModel):
+    id: str
+    project_id: str
+    base_revision: int
+    user_instruction: str
+    state: str
+    model: str
+    rounds: int
+    correction_attempts: int
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    cancel_requested: bool
+    proposal: PlannerProposal | None = None
+    validation: ValidationReport | None = None
+    current_revision: int | None = None
+    accepted_revision: int | None = None
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    accepted_at: str | None = None
+    events: list[SpecificationPlannerEventResponse] = Field(default_factory=list)
+
+
+class SpecificationPlannerSummaryResponse(BaseModel):
+    id: str
+    project_id: str
+    base_revision: int
+    state: str
+    model: str
+    rounds: int
+    proposal_available: bool
+    created_at: str
+    updated_at: str
+
+
+class SpecificationPlannerAcceptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
 
 
 class GenerationConfigResponse(BaseModel):

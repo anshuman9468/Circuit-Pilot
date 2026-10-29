@@ -21,6 +21,7 @@ import {
   api,
 } from "../lib/api";
 import GenerationPanel from "./GenerationPanel";
+import SpecificationPlannerPanel from "./SpecificationPlannerPanel";
 
 type Props = { projectId: string; onDirtyChange: (dirty: boolean) => void; onActivityChanged: () => void; onFilesChanged: () => Promise<void> };
 type ArrayKey = "parameters" | "ports" | "clock_domains" | "reset_signals" | "functional_requirements" | "boundary_behaviors" | "assumptions" | "open_questions" | "modules" | "verification_objectives";
@@ -153,6 +154,7 @@ export default function SpecificationPanel({ projectId, onDirtyChange, onActivit
     {preview && <pre className="json-preview" aria-label="Specification JSON preview">{JSON.stringify(draft, null, 2)}</pre>}
     <ValidationSummary validation={validation} />
     {status === "ready" && <div className="ready-banner"><Check size={15} /><span>This revision was explicitly reviewed and marked ready. Any edit creates a new draft revision; the ready revision remains immutable.</span></div>}
+    <SpecificationPlannerPanel projectId={projectId} specification={draft} validation={validation} currentRevision={currentRevision} dirty={dirty} onActivityChanged={onActivityChanged} onAccepted={reload} />
     <GenerationPanel projectId={projectId} specification={draft} validation={validation} status={status} currentRevision={currentRevision} onActivityChanged={onActivityChanged} onFilesChanged={onFilesChanged} />
 
     <Section title="Overview" description="Keep the original request exact while adding structured context."><div className="spec-grid two"><Field label="Original natural-language request"><textarea className={areaClass} value={draft.original_request} onChange={(event) => patchDraft({ original_request: event.target.value })} /></Field><Field label="Circuit name"><input className={inputClass} value={draft.circuit_name} onChange={(event) => patchDraft({ circuit_name: event.target.value })} placeholder="e.g. packet_router" /></Field></div><Field label="Purpose"><textarea className={areaClass} value={draft.purpose} onChange={(event) => patchDraft({ purpose: event.target.value })} placeholder="What should this design do?" /></Field><Field label="Design category"><select className={inputClass} value={draft.design_category} onChange={(event) => patchDraft({ design_category: event.target.value as CircuitSpecification["design_category"] })}><option value="unspecified">Choose a category</option><option value="combinational">Combinational</option><option value="sequential">Sequential</option><option value="mixed">Mixed</option></select></Field></Section>

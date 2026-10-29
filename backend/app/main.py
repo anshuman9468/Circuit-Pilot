@@ -15,7 +15,8 @@ from .db import create_database, initialize_database
 from .errors import ApiError
 from .services.agent_runs import RunManager, recover_interrupted_runs
 from .services.generation_service import GenerationManager, MetaGenerationProvider, recover_interrupted_generations
-from .services.model_provider import MetaModelProvider
+from .services.model_provider import FallbackModelProvider, MetaModelProvider, OpenRouterModelProvider
+from .services.planner_service import MetaRequirementsPlanner, SpecificationPlannerManager, recover_interrupted_planner_runs
 from .services.tool_registry import ReadOnlyToolRegistry
 from .services.workspace import WorkspaceService
 
@@ -45,7 +46,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def create_app(app_settings: Settings | None = None, generation_provider=None) -> FastAPI:
+def create_app(app_settings: Settings | None = None, generation_provider=None, planner_provider=None) -> FastAPI:
     active_settings = app_settings or settings
     engine, session_factory = create_database(active_settings.database_path)
     initialize_database(engine)
@@ -56,15 +57,23 @@ def create_app(app_settings: Settings | None = None, generation_provider=None) -
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.workspace = WorkspaceService(active_settings.workspace_root, active_settings.max_file_size)
-    app.state.model_provider = MetaModelProvider(active_settings)
+    app.state.model_provider = FallbackModelProvider(
+        MetaModelProvider(active_settings, enabled=active_settings.model_primary_enabled),
+        OpenRouterModelProvider(active_settings),
+        enabled=active_settings.model_fallback_enabled,
+        allow_transient_fallback=active_settings.model_fallback_on_transient_errors,
+    )
     app.state.generation_provider = generation_provider or MetaGenerationProvider(app.state.model_provider, active_settings)
-    app.state.model_connection_status = "configured_not_tested" if active_settings.model_api_key else "not_configured"
+    app.state.planner_provider = planner_provider or MetaRequirementsPlanner(app.state.model_provider, active_settings)
+    app.state.model_connection_status = "configured_not_tested" if app.state.model_provider.configured else "not_configured"
     app.state.model_last_error = None
     app.state.tool_registry = ReadOnlyToolRegistry(active_settings.max_tool_result_chars)
     app.state.run_manager = RunManager(app)
     app.state.generation_manager = GenerationManager(app)
+    app.state.planner_manager = SpecificationPlannerManager(app)
     recover_interrupted_runs(session_factory)
     recover_interrupted_generations(session_factory)
+    recover_interrupted_planner_runs(session_factory)
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=active_settings.max_request_size)
     app.add_middleware(
         CORSMiddleware,

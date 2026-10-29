@@ -304,6 +304,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .proposal-meta-grid strong { color: #d0e0e2; font-size: 10px; }
 .honest-status-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: #7f9ba2; font: 10px "SFMono-Regular", Consolas, monospace; }
 .honest-status-row span { padding: 5px 7px; border: 1px solid #2a4853; border-radius: 4px; }
+.planner-panel { margin: 20px 0 4px; padding: 15px; border: 1px solid #385063; border-radius: 9px; background: linear-gradient(145deg, rgba(20, 37, 53, .78), rgba(9, 22, 31, .7)); }
+.planner-instruction { margin-top: 13px; padding: 11px; border: 1px solid var(--border-soft); border-radius: 7px; background: rgba(6, 15, 22, .3); }
+.planner-instruction .field-textarea { min-height: 70px; }
+.planner-proposal { margin-top: 14px; padding-top: 14px; border-top: 1px solid #385063; }
+.planner-proposal .section-title { display: flex; align-items: center; gap: 6px; }
+.planner-stat-grid { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.planner-stat-grid span { padding: 6px 8px; border: 1px solid #2a4853; border-radius: 5px; color: #91afb5; font: 10px "SFMono-Regular", Consolas, monospace; }
+.planner-stat-grid strong { color: #bde8e0; }
+.planner-json { margin-top: 12px; border: 1px solid var(--border-soft); border-radius: 6px; background: rgba(5, 14, 21, .45); }
+.planner-json summary { cursor: pointer; padding: 9px 10px; color: #a9d9d1; font-size: 11px; }
+.planner-json pre { max-height: 320px; overflow: auto; margin: 0; padding: 10px; border-top: 1px solid var(--border-soft); color: #c9d9dc; font: 10px/1.5 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 650px) {
   .generation-heading, .proposal-review-heading, .generation-run-topline { align-items: flex-start; flex-direction: column; }

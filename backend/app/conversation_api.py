@@ -83,26 +83,33 @@ def _get_run(session: Session, project_id: str, run_id: str) -> AgentRun:
 
 def _config_status(request: Request) -> ModelConfigResponse:
     settings = request.app.state.settings
-    configured = bool(request.app.state.model_provider.configured)
+    provider = request.app.state.model_provider
+    provider_label = getattr(provider, "provider_label", "Model")
+    model = getattr(provider, "model", settings.meta_model)
+    base_url = getattr(provider, "base_url", settings.meta_base_url)
+    fallback_configured = bool(getattr(provider, "fallback_configured", False))
+    configured = bool(provider.configured)
     if not configured:
         current_status = "not_configured"
-        message = "Configure the backend model key to enable Meta conversations."
+        message = "Configure a backend model key to enable conversations."
     elif request.app.state.model_connection_status == "connected":
         current_status = "connected"
-        message = "Meta returned a successful response for this backend process."
+        message = f"{provider_label} returned a successful response for this backend process."
     elif request.app.state.model_last_error:
         current_status = "connection_failed"
-        message = "The last Meta request failed. Retry the connection test or a conversation explicitly."
+        message = "The last model request failed. Retry the connection test or a conversation explicitly."
     else:
         current_status = "configured_not_tested"
         message = "A backend key is present, but no billable connection test has been run yet."
     return ModelConfigResponse(
         configured=configured,
         status=current_status,
-        model=settings.meta_model,
-        base_url=settings.meta_base_url,
+        model=model,
+        base_url=base_url,
         message=message,
         last_error=request.app.state.model_last_error,
+        provider=provider_label,
+        fallback_configured=fallback_configured,
     )
 
 
@@ -115,7 +122,7 @@ def model_config_status(request: Request) -> ModelConfigResponse:
 async def test_model_connection(request: Request) -> ConnectionTestResponse:
     provider = request.app.state.model_provider
     if not provider.configured:
-        raise ApiError(503, "not_configured", "Configure the backend model key before testing Meta.")
+        raise ApiError(503, "not_configured", "Configure a backend model key before testing the model connection.")
     try:
         response = await provider.test_connection()
     except ProviderError as exc:
@@ -126,8 +133,8 @@ async def test_model_connection(request: Request) -> ConnectionTestResponse:
     request.app.state.model_last_error = None
     return ConnectionTestResponse(
         status="connected",
-        model=request.app.state.settings.meta_model,
-        message=response.content or "Meta returned a successful response.",
+        model=getattr(provider, "model", request.app.state.settings.meta_model),
+        message=response.content or "The configured model returned a successful response.",
         prompt_tokens=response.usage.prompt_tokens,
         completion_tokens=response.usage.completion_tokens,
         total_tokens=response.usage.total_tokens,
@@ -204,7 +211,7 @@ async def submit_message(
             conversation_id=conversation.id,
             user_message_id="pending",
             status="queued",
-            model=request.app.state.settings.meta_model,
+            model=getattr(request.app.state.model_provider, "model", request.app.state.settings.meta_model),
         )
         session.add(run)
         session.flush()
@@ -283,7 +290,7 @@ async def retry_agent_run(
             user_message_id=previous.user_message_id,
             retry_of_run_id=previous.id,
             status="queued",
-            model=request.app.state.settings.meta_model,
+            model=getattr(request.app.state.model_provider, "model", request.app.state.settings.meta_model),
         )
         session.add(run)
         session.flush()

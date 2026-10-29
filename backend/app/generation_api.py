@@ -32,27 +32,29 @@ router = APIRouter(prefix="/api")
 
 def _config(request: Request) -> GenerationConfigResponse:
     settings = request.app.state.settings
+    configured = bool(request.app.state.model_provider.configured)
+    model = getattr(request.app.state.model_provider, "model", settings.meta_model)
     if not settings.generation_enabled:
         return GenerationConfigResponse(
             enabled=False,
-            configured=bool(settings.model_api_key),
+            configured=configured,
             status="disabled",
-            model=settings.meta_model,
+            model=model,
             message="Live RTL generation is disabled by the backend feature flag. No provider calls will be made.",
         )
-    if not settings.model_api_key:
+    if not configured:
         return GenerationConfigResponse(
             enabled=True,
             configured=False,
             status="not_configured",
-            model=settings.meta_model,
+            model=model,
             message="Generation is enabled, but the backend-only model key is not configured.",
         )
     return GenerationConfigResponse(
         enabled=True,
         configured=True,
         status="configured",
-        model=settings.meta_model,
+        model=model,
         message="Live generation is enabled. Generated files are staged for review and are not compiled or executed.",
     )
 
@@ -213,7 +215,7 @@ async def start_generation(
         baseline_files_json=baseline_files,
         settings_json=context_settings,
         state="queued",
-        model=request.app.state.settings.meta_model,
+        model=getattr(request.app.state.model_provider, "model", request.app.state.settings.meta_model),
     )
     session.add(job)
     session.flush()

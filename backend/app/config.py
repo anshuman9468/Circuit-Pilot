@@ -61,14 +61,25 @@ class Settings:
     model_api_key: str | None = None
     meta_base_url: str = "https://api.meta.ai/v1"
     meta_model: str = "muse-spark-1.3-contributor"
+    model_primary_enabled: bool = True
+    model_fallback_enabled: bool = False
+    model_fallback_on_transient_errors: bool = False
+    model_fallback_api_key: str | None = None
+    model_fallback_base_url: str = "https://openrouter.ai/api/v1"
+    model_fallback_model: str = "openrouter/free"
     model_timeout_seconds: float = 45.0
     max_model_rounds: int = 6
     max_tool_calls: int = 12
-    max_completion_tokens: int = 2048
+    # Structured planner proposals can require more than a short chat answer,
+    # especially when a free router selects a reasoning model. The limit is
+    # still bounded and applies to every provider request.
+    max_completion_tokens: int = 8192
     max_context_chars: int = 96_000
     max_tool_result_chars: int = 32_000
     max_active_runs: int = 1
     max_user_message_chars: int = 20_000
+    specification_planner_enabled: bool = False
+    max_planner_corrections: int = 1
     generation_enabled: bool = False
     max_generation_output_bytes: int = 512 * 1024
     max_generation_corrections: int = 1
@@ -84,6 +95,7 @@ class Settings:
             "max_tool_result_chars",
             "max_active_runs",
             "max_user_message_chars",
+            "max_planner_corrections",
             "max_generation_output_bytes",
             "max_generation_corrections",
         ):
@@ -91,6 +103,8 @@ class Settings:
                 raise ValueError(f"{name} must be positive")
         if not self.meta_base_url.startswith(("http://", "https://")):
             raise ValueError("meta_base_url must be an HTTP(S) URL")
+        if not self.model_fallback_base_url.startswith(("http://", "https://")):
+            raise ValueError("model_fallback_base_url must be an HTTP(S) URL")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -112,14 +126,22 @@ class Settings:
             model_api_key=_env("MODEL_API_KEY", local=local) or None,
             meta_base_url=_env("META_BASE_URL", "https://api.meta.ai/v1", local) or "https://api.meta.ai/v1",
             meta_model=_env("META_MODEL", "muse-spark-1.3-contributor", local) or "muse-spark-1.3-contributor",
+            model_primary_enabled=(_env("MODEL_PRIMARY_ENABLED", "true", local) or "true").lower() in {"1", "true", "yes", "on"},
+            model_fallback_enabled=(_env("MODEL_FALLBACK_ENABLED", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
+            model_fallback_on_transient_errors=(_env("MODEL_FALLBACK_ON_TRANSIENT_ERRORS", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
+            model_fallback_api_key=_env("MODEL_FALLBACK_API_KEY", local=local) or None,
+            model_fallback_base_url=_env("MODEL_FALLBACK_BASE_URL", "https://openrouter.ai/api/v1", local) or "https://openrouter.ai/api/v1",
+            model_fallback_model=_env("MODEL_FALLBACK_MODEL", "openrouter/free", local) or "openrouter/free",
             model_timeout_seconds=float(_env("MODEL_TIMEOUT_SECONDS", "45", local) or "45"),
             max_model_rounds=int(_env("MAX_MODEL_ROUNDS", "6", local) or "6"),
             max_tool_calls=int(_env("MAX_TOOL_CALLS", "12", local) or "12"),
-            max_completion_tokens=int(_env("MAX_COMPLETION_TOKENS", "2048", local) or "2048"),
+            max_completion_tokens=int(_env("MAX_COMPLETION_TOKENS", "8192", local) or "8192"),
             max_context_chars=int(_env("MAX_CONTEXT_CHARS", "96000", local) or "96000"),
             max_tool_result_chars=int(_env("MAX_TOOL_RESULT_CHARS", "32000", local) or "32000"),
             max_active_runs=int(_env("MAX_ACTIVE_RUNS", "1", local) or "1"),
             max_user_message_chars=int(_env("MAX_USER_MESSAGE_CHARS", "20000", local) or "20000"),
+            specification_planner_enabled=(_env("SPECIFICATION_PLANNER_ENABLED", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
+            max_planner_corrections=int(_env("MAX_PLANNER_CORRECTIONS", "1", local) or "1"),
             generation_enabled=(_env("GENERATION_ENABLED", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
             max_generation_output_bytes=int(_env("MAX_GENERATION_OUTPUT_BYTES", "524288", local) or "524288"),
             max_generation_corrections=int(_env("MAX_GENERATION_CORRECTIONS", "1", local) or "1"),

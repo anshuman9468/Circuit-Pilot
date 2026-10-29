@@ -138,6 +138,7 @@ class MetaGenerationProvider:
     def __init__(self, provider: MetaModelProvider, settings: Settings):
         self.provider = provider
         self.settings = settings
+        self.last_model: str | None = None
 
     async def generate(self, context: GenerationContext, correction: str | None = None) -> GenerationAttempt:
         correction_text = (
@@ -162,6 +163,7 @@ class MetaGenerationProvider:
             tools=[],
             max_completion_tokens=self.settings.max_completion_tokens,
         )
+        self.last_model = getattr(self.provider, "model", None)
         return parse_generation_response(response)
 
 
@@ -331,6 +333,7 @@ async def execute_generation(app, generation_id: str) -> None:
                 _check_cancelled(session, job)
                 duration_ms = int((time.monotonic() - started) * 1000)
                 job.provider_request_id = attempt.request_id
+                job.model = getattr(provider, "last_model", job.model)
                 _add_usage(job, attempt.usage)
                 append_generation_event(session, job, "provider_response", "Received a generation response", {"duration_ms": duration_ms, "attempt": attempt_number, "usage": attempt.usage})
                 session.commit()

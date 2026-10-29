@@ -43,7 +43,11 @@ def initialize_database(engine) -> None:
                 "prompt_tokens": "INTEGER",
                 "completion_tokens": "INTEGER",
                 "total_tokens": "INTEGER",
-            }
+            },
+            "specification_planner_runs": {
+                "updated_at": "DATETIME",
+                "accepted_revision": "INTEGER",
+            },
         }
         with engine.begin() as connection:
             inspector = inspect(connection)
@@ -52,3 +56,7 @@ def initialize_database(engine) -> None:
                 for name, sql_type in columns.items():
                     if name not in existing:
                         connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
+            if "updated_at" in additive_columns.get("specification_planner_runs", {}):
+                connection.execute(
+                    text("UPDATE specification_planner_runs SET updated_at = created_at WHERE updated_at IS NULL")
+                )

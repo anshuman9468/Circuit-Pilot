@@ -39,6 +39,8 @@ export type ModelConfig = {
   base_url: string;
   message: string;
   last_error: string | null;
+  provider: string;
+  fallback_configured: boolean;
 };
 
 export type ConversationMessage = {
@@ -288,6 +290,70 @@ export type SpecificationRevisionResponse = {
   ready_revision: number | null;
 };
 
+export type SpecificationPlannerConfig = {
+  enabled: boolean;
+  configured: boolean;
+  status: "disabled" | "not_configured" | "configured" | string;
+  provider: string;
+  model: string;
+  message: string;
+};
+
+export type PlannerProposal = {
+  proposed_specification: CircuitSpecification;
+  assumptions: Assumption[];
+  clarification_questions: OpenQuestion[];
+  proposed_modules: ModulePlan[];
+  proposed_verification_objectives: VerificationObjective[];
+  summary: string;
+};
+
+export type SpecificationPlannerEvent = {
+  id: string;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type SpecificationPlannerRun = {
+  id: string;
+  project_id: string;
+  base_revision: number;
+  user_instruction: string;
+  state: "queued" | "running" | "proposed" | "accepted" | "discarded" | "failed" | "cancelled" | "interrupted" | string;
+  model: string;
+  rounds: number;
+  correction_attempts: number;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  cancel_requested: boolean;
+  proposal: PlannerProposal | null;
+  validation: ValidationReport | null;
+  current_revision: number | null;
+  accepted_revision: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  accepted_at: string | null;
+  events: SpecificationPlannerEvent[];
+};
+
+export type SpecificationPlannerSummary = {
+  id: string;
+  project_id: string;
+  base_revision: number;
+  state: string;
+  model: string;
+  rounds: number;
+  proposal_available: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type GenerationConfig = {
   enabled: boolean;
   configured: boolean;
@@ -476,6 +542,25 @@ export const api = {
     }),
   exportSpecification: (id: string) =>
     request<{ specification: CircuitSpecification; validation: ValidationReport; exported_at: string }>(`/projects/${id}/specification/export`),
+  specificationPlannerConfig: () => request<SpecificationPlannerConfig>("/config/specification-planner"),
+  startSpecificationPlanner: (projectId: string, expectedRevision: number, instruction = "") =>
+    request<SpecificationPlannerRun>(`/projects/${projectId}/specification/planner`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision, instruction }),
+    }),
+  listSpecificationPlannerRuns: (projectId: string) =>
+    request<SpecificationPlannerSummary[]>(`/projects/${projectId}/specification/planner`),
+  getSpecificationPlannerRun: (projectId: string, plannerId: string) =>
+    request<SpecificationPlannerRun>(`/projects/${projectId}/specification/planner/${plannerId}`),
+  cancelSpecificationPlannerRun: (projectId: string, plannerId: string) =>
+    request<SpecificationPlannerRun>(`/projects/${projectId}/specification/planner/${plannerId}/cancel`, { method: "POST" }),
+  acceptSpecificationPlannerRun: (projectId: string, plannerId: string, expectedRevision: number) =>
+    request<SpecificationPlannerRun>(`/projects/${projectId}/specification/planner/${plannerId}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    }),
+  discardSpecificationPlannerRun: (projectId: string, plannerId: string) =>
+    request<SpecificationPlannerRun>(`/projects/${projectId}/specification/planner/${plannerId}/discard`, { method: "POST" }),
   generationConfig: () => request<GenerationConfig>("/config/generation"),
   startGeneration: (projectId: string, specificationRevision: number, settings?: { include_existing_context: boolean; context_file_ids: string[] }) =>
     request<GenerationJob>(`/projects/${projectId}/generations`, {
