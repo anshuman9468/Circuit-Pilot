@@ -20,8 +20,9 @@ import {
   VerificationObjective,
   api,
 } from "../lib/api";
+import GenerationPanel from "./GenerationPanel";
 
-type Props = { projectId: string; onDirtyChange: (dirty: boolean) => void; onActivityChanged: () => void };
+type Props = { projectId: string; onDirtyChange: (dirty: boolean) => void; onActivityChanged: () => void; onFilesChanged: () => Promise<void> };
 type ArrayKey = "parameters" | "ports" | "clock_domains" | "reset_signals" | "functional_requirements" | "boundary_behaviors" | "assumptions" | "open_questions" | "modules" | "verification_objectives";
 
 const inputClass = "field-input spec-input";
@@ -71,7 +72,7 @@ function ClarificationCard({ item, onAnswer }: { item: Clarification; onAnswer: 
   return <div className={`clarification-card ${item.severity}`}><div className="clarification-copy"><div className="clarification-topline"><span className="severity-pill">{item.severity}</span><span className="clarification-field">{item.related_field}</span></div><div className="clarification-reason">{item.reason}</div><div className="clarification-path">{item.field_path}</div></div>{guided ? <div className="clarification-answer"><select className={inputClass} aria-label={`Answer ${item.related_field}`} value={answer} onChange={(event) => setAnswer(event.target.value)}>{item.code === "port_direction_missing" && <><option value="input">input</option><option value="output">output</option><option value="inout">inout</option></>}{item.code === "port_signedness_unspecified" && <><option value="unsigned">unsigned</option><option value="signed">signed</option></>}{item.code === "design_category_missing" && <><option value="combinational">combinational</option><option value="sequential">sequential</option><option value="mixed">mixed</option></>}{item.code === "reset_intent_missing" && <><option value="not_intended">no reset intended</option><option value="required">reset required</option></>}</select><button className="button" onClick={() => void onAnswer(answer)}><Check size={13} /> Apply</button></div> : <div className="clarification-manual">Edit the structured field above</div>}</div>;
 }
 
-export default function SpecificationPanel({ projectId, onDirtyChange, onActivityChanged }: Props) {
+export default function SpecificationPanel({ projectId, onDirtyChange, onActivityChanged, onFilesChanged }: Props) {
   const [draft, setDraft] = useState<CircuitSpecification | null>(null);
   const [currentRevision, setCurrentRevision] = useState(1);
   const [dirty, setDirty] = useState(false);
@@ -152,6 +153,7 @@ export default function SpecificationPanel({ projectId, onDirtyChange, onActivit
     {preview && <pre className="json-preview" aria-label="Specification JSON preview">{JSON.stringify(draft, null, 2)}</pre>}
     <ValidationSummary validation={validation} />
     {status === "ready" && <div className="ready-banner"><Check size={15} /><span>This revision was explicitly reviewed and marked ready. Any edit creates a new draft revision; the ready revision remains immutable.</span></div>}
+    <GenerationPanel projectId={projectId} specification={draft} validation={validation} status={status} currentRevision={currentRevision} onActivityChanged={onActivityChanged} onFilesChanged={onFilesChanged} />
 
     <Section title="Overview" description="Keep the original request exact while adding structured context."><div className="spec-grid two"><Field label="Original natural-language request"><textarea className={areaClass} value={draft.original_request} onChange={(event) => patchDraft({ original_request: event.target.value })} /></Field><Field label="Circuit name"><input className={inputClass} value={draft.circuit_name} onChange={(event) => patchDraft({ circuit_name: event.target.value })} placeholder="e.g. packet_router" /></Field></div><Field label="Purpose"><textarea className={areaClass} value={draft.purpose} onChange={(event) => patchDraft({ purpose: event.target.value })} placeholder="What should this design do?" /></Field><Field label="Design category"><select className={inputClass} value={draft.design_category} onChange={(event) => patchDraft({ design_category: event.target.value as CircuitSpecification["design_category"] })}><option value="unspecified">Choose a category</option><option value="combinational">Combinational</option><option value="sequential">Sequential</option><option value="mixed">Mixed</option></select></Field></Section>
 

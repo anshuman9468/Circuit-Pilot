@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
@@ -35,3 +35,20 @@ def initialize_database(engine) -> None:
     from . import models  # noqa: F401
 
     Base.metadata.create_all(engine)
+    # The local MVP intentionally has no migration dependency. Keep additive
+    # schema changes recoverable for an existing SQLite data directory.
+    if engine.dialect.name == "sqlite":
+        additive_columns = {
+            "generation_jobs": {
+                "prompt_tokens": "INTEGER",
+                "completion_tokens": "INTEGER",
+                "total_tokens": "INTEGER",
+            }
+        }
+        with engine.begin() as connection:
+            inspector = inspect(connection)
+            for table, columns in additive_columns.items():
+                existing = {item["name"] for item in inspector.get_columns(table)}
+                for name, sql_type in columns.items():
+                    if name not in existing:
+                        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))

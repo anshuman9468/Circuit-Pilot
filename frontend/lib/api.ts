@@ -288,6 +288,98 @@ export type SpecificationRevisionResponse = {
   ready_revision: number | null;
 };
 
+export type GenerationConfig = {
+  enabled: boolean;
+  configured: boolean;
+  status: "disabled" | "not_configured" | "configured" | string;
+  model: string;
+  message: string;
+};
+
+export type GenerationEvent = {
+  id: string;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type GenerationClarification = {
+  id: string;
+  related_field: string;
+  reason: string;
+  severity: "blocking" | "advisory";
+  expected_answer_type: "text" | "choice" | "object";
+};
+
+export type GenerationJob = {
+  id: string;
+  project_id: string;
+  specification_revision: number;
+  state: "queued" | "running" | "awaiting_clarification" | "proposed" | "applied" | "discarded" | "failed" | "cancelled" | "interrupted" | string;
+  model: string;
+  rounds: number;
+  correction_attempts: number;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  cancel_requested: boolean;
+  clarification: GenerationClarification[];
+  proposal_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  events: GenerationEvent[];
+};
+
+export type ProposedFile = {
+  path: string;
+  role: "rtl" | "testbench" | "documentation" | string;
+  language: string;
+  content: string;
+};
+
+export type GenerationResult = {
+  top_module: string;
+  testbench_top: string;
+  files: ProposedFile[];
+  source_manifest: { path: string; role: "rtl" | "testbench"; order: number }[];
+  requirement_module_mapping: Record<string, string[]>;
+  verification_test_mapping: Record<string, string[]>;
+  unmapped_requirements: string[];
+  assumptions: string[];
+  unresolved_questions: string[];
+  known_limitations: string[];
+  implementation_summary: string;
+};
+
+export type GenerationFileDiff = {
+  path: string;
+  role: string;
+  change_type: "added" | "modified" | "unchanged" | string;
+  existing_content: string | null;
+  proposed_content: string;
+};
+
+export type GenerationProposal = {
+  proposal_id: string;
+  generation_id: string;
+  project_id: string;
+  status: string;
+  specification_revision: number;
+  baseline_revision: string;
+  result: GenerationResult;
+  files: GenerationFileDiff[];
+  assumptions: string[];
+  unresolved_questions: string[];
+  known_limitations: string[];
+  backup_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 const configuredBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 const API_BASE = configuredBase.endsWith("/") ? configuredBase.slice(0, -1) : configuredBase;
 
@@ -384,4 +476,20 @@ export const api = {
     }),
   exportSpecification: (id: string) =>
     request<{ specification: CircuitSpecification; validation: ValidationReport; exported_at: string }>(`/projects/${id}/specification/export`),
+  generationConfig: () => request<GenerationConfig>("/config/generation"),
+  startGeneration: (projectId: string, specificationRevision: number, settings?: { include_existing_context: boolean; context_file_ids: string[] }) =>
+    request<GenerationJob>(`/projects/${projectId}/generations`, {
+      method: "POST",
+      body: JSON.stringify({ specification_revision: specificationRevision, settings: settings || { include_existing_context: false, context_file_ids: [] } }),
+    }),
+  listGenerations: (projectId: string) => request<GenerationJob[]>(`/projects/${projectId}/generations`),
+  getGeneration: (projectId: string, generationId: string) => request<GenerationJob>(`/projects/${projectId}/generations/${generationId}`),
+  cancelGeneration: (projectId: string, generationId: string) =>
+    request<GenerationJob>(`/projects/${projectId}/generations/${generationId}/cancel`, { method: "POST" }),
+  listGenerationProposals: (projectId: string) => request<GenerationProposal[]>(`/projects/${projectId}/generation-proposals`),
+  getGenerationProposal: (projectId: string, proposalId: string) => request<GenerationProposal>(`/projects/${projectId}/generation-proposals/${proposalId}`),
+  acceptGenerationProposal: (projectId: string, proposalId: string) =>
+    request<GenerationProposal>(`/projects/${projectId}/generation-proposals/${proposalId}/accept`, { method: "POST" }),
+  discardGenerationProposal: (projectId: string, proposalId: string) =>
+    request<GenerationProposal>(`/projects/${projectId}/generation-proposals/${proposalId}/discard`, { method: "POST" }),
 };

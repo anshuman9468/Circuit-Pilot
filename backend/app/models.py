@@ -39,6 +39,12 @@ class Project(Base):
     specifications: Mapped[list["Specification"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    generation_jobs: Mapped[list["GenerationJob"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    generation_proposals: Mapped[list["GenerationProposal"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class ProjectFile(Base):
@@ -237,3 +243,91 @@ class SpecificationRevision(Base):
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     specification: Mapped[Specification] = relationship(back_populates="revisions")
+
+
+class GenerationJob(Base):
+    """Persistent bounded generation attempt; model output is staged, never written directly."""
+
+    __tablename__ = "generation_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    specification_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    baseline_files_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    settings_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    state: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    correction_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    clarification_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    provider_request_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    project: Mapped[Project] = relationship(back_populates="generation_jobs")
+    events: Mapped[list["GenerationEvent"]] = relationship(
+        back_populates="generation", cascade="all, delete-orphan", order_by="GenerationEvent.created_at"
+    )
+    proposal: Mapped["GenerationProposal | None"] = relationship(
+        back_populates="generation", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class GenerationEvent(Base):
+    __tablename__ = "generation_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    generation_id: Mapped[str] = mapped_column(ForeignKey("generation_jobs.id", ondelete="CASCADE"), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    summary: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    generation: Mapped[GenerationJob] = relationship(back_populates="events")
+
+
+class GenerationProposal(Base):
+    __tablename__ = "generation_proposals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    generation_id: Mapped[str] = mapped_column(
+        ForeignKey("generation_jobs.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    specification_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_revision: Mapped[str] = mapped_column(String(64), nullable=False)
+    baseline_files_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    result_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="proposed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    generation: Mapped[GenerationJob] = relationship(back_populates="proposal")
+    project: Mapped[Project] = relationship(back_populates="generation_proposals")
+    backups: Mapped[list["GenerationBackup"]] = relationship(
+        back_populates="proposal", cascade="all, delete-orphan", order_by="GenerationBackup.path"
+    )
+
+
+class GenerationBackup(Base):
+    __tablename__ = "generation_backups"
+    __table_args__ = (UniqueConstraint("proposal_id", "path", name="uq_generation_backup_path"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    proposal_id: Mapped[str] = mapped_column(ForeignKey("generation_proposals.id", ondelete="CASCADE"), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    existed: Mapped[bool] = mapped_column(nullable=False, default=False)
+    previous_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    proposal: Mapped[GenerationProposal] = relationship(back_populates="backups")

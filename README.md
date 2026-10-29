@@ -1,8 +1,8 @@
 # CircuitPilot
 
-CircuitPilot is a local, single-user digital hardware engineering workspace. Phase 3 adds an offline, persisted requirements and design-planning workflow on top of the Phase 1 project foundation and Phase 2 conversation integration.
+CircuitPilot is a local, single-user digital hardware engineering workspace. Phase 4 adds a feature-gated, staged RTL and self-checking testbench proposal workflow on top of the Phase 1–3 foundation.
 
-The assistant can discuss a project and use three read-only, project-bound tools to inspect saved requirements and text files. The Specification view lets a user turn a natural-language request into a versioned structured specification, module plan, and planned verification objectives using deterministic validation. It does not generate RTL, write files, execute commands, simulate, synthesize, or claim verification results.
+The assistant can discuss a project and use three read-only, project-bound tools to inspect saved requirements and text files. The Specification view lets a user turn a natural-language request into a versioned structured specification, module plan, and planned verification objectives using deterministic validation. A ready revision can then be sent through the explicit Phase 4 generation path. Generation produces a validated proposal in a separate persistent record; it does not compile, simulate, synthesize, or claim verification results.
 
 ## Prerequisites
 
@@ -52,6 +52,9 @@ The application starts without a model key. Keep `MODEL_API_KEY` in this backend
 | `MAX_TOOL_RESULT_CHARS` | Maximum returned requirements/file tool content |
 | `MAX_ACTIVE_RUNS` | Maximum simultaneous active runs for this backend process |
 | `MAX_USER_MESSAGE_CHARS` | Maximum submitted conversation message size |
+| `GENERATION_ENABLED` | Explicit Phase 4 live-generation feature flag; defaults to `false` |
+| `MAX_GENERATION_OUTPUT_BYTES` | Total generated proposal content limit |
+| `MAX_GENERATION_CORRECTIONS` | Maximum bounded contract-correction attempt after malformed output |
 
 The Phase 2 provider contract follows Meta's current documentation:
 
@@ -91,6 +94,18 @@ The specification schema is versioned as `1.0` and includes the original request
 
 The future requirements planner will implement the provider-independent `RequirementsPlanner` interface in `backend/app/services/interfaces.py`. Its validated proposal contract can contain specification changes, assumptions, clarification questions, modules, and verification objectives. Phase 3 uses no planner implementation and never silently replaces reviewed user fields.
 
+## Phase 4 generation workflow
+
+The **RTL proposal generation** section is available in the Specification view. It is disabled by default. A request is accepted only for a saved, immutable ready specification revision with no blocking findings, exactly one top-level module, and complete port interface data. The backend captures the specification revision, selected existing-file context, workspace file hashes, model settings, and timestamps before any provider request.
+
+To deliberately enable the eventual live path, set `GENERATION_ENABLED=true` and provide the backend-only `MODEL_API_KEY`, then restart FastAPI. The default `.env.example` keeps this feature disabled. The UI never asks for or exposes the key, and configuration/status endpoints do not make provider calls. Existing files are included only when the user explicitly selects them as revision context.
+
+The Meta-backed implementation reuses the Phase 2 asynchronous OpenAI-compatible client and returns a typed JSON contract. It requires `rtl/` synthesizable Verilog/SystemVerilog files, `tb/` self-checking finite testbench files, an ordered source manifest, requirement/module and verification/test mappings, assumptions, unresolved questions, limitations, and an implementation summary. The supported HDL subset is conservative synthesizable Verilog/SystemVerilog: no RTL delays, `initial` blocks, file I/O, PLI, external IP, or simulation-only constructs. Contract validation rejects traversal paths, unsupported extensions, duplicates, missing manifest entries, oversized output, top-module mismatches, and unknown specification references. One bounded correction request may be made according to configuration; ambiguous failures are not automatically retried.
+
+Generated files first appear as a persistent proposal. Review the summary, assumptions, unmapped requirements, unresolved questions, and per-file added/modified diff. **Accept proposal** checks that the captured workspace hashes still match, creates recoverable backups for overwritten files, and applies the whole validated set atomically with filesystem rollback on failure. **Discard** changes no active files. A later specification edit cannot change the input revision of an existing generation. Honest labels remain visible: **Generated — not compiled**, **Testbench created — not executed**, and **Synthesis not run**.
+
+Phase 4 has no compilation or simulation runner. Fake providers exist only in offline tests and establish orchestration, persistence, and safety behavior—not RTL design quality or hardware verification. Phase 5 can attach linting, compilation, simulation, synthesis, artifact references, and evidence-backed result reporting to the ordered source manifest and staged proposal.
+
 ## Available read-only tools
 
 The model receives only these tools, all bound by backend code to the currently open project:
@@ -105,7 +120,7 @@ The backend validates tool JSON with Pydantic, rejects unknown fields and invali
 
 By default, runtime data is stored under `data/`:
 
-- `data/circuitpilot.db` stores projects, requirements, file metadata, project events, conversations, protocol messages, runs, run events, current specification pointers, validation reports, and immutable specification revisions.
+- `data/circuitpilot.db` stores projects, requirements, file metadata, project events, conversations, protocol messages, runs, run events, current specification pointers, validation reports, immutable specification revisions, generation jobs/events, staged proposals, and overwrite backups.
 - `data/workspaces/<project-id>/` stores the actual project text files.
 
 The data directory is ignored by Git. Saved assistant-visible messages are persisted, while complete assistant tool-call and matching tool-response protocol records are retained separately for valid future continuation. Interrupted queued/running runs are marked `interrupted` on the next backend startup.
@@ -127,10 +142,10 @@ npm run typecheck
 npm run build
 ```
 
-The test suite covers project isolation, persistence, tool ordering and binding, malformed/invalid tool arguments, provider error mapping, limits, cancellation, retry, interrupted-run recovery, structured validation, clarification resolution, module/port references, symbolic widths, revision history, readiness gates, and revision conflicts. Live Meta connectivity is not part of the automated test suite. Phase 3 verification intentionally performs no provider request.
+The test suite covers project isolation, persistence, tool ordering and binding, malformed/invalid tool arguments, provider error mapping, limits, cancellation, retry, interrupted-run recovery, structured validation, clarification resolution, module/port references, symbolic widths, revision history, readiness gates, revision conflicts, generation contract validation, bounded correction, clarification results, selected-file isolation, staging without workspace mutation, apply/discard, overwrite backups, workspace conflicts, cancellation, and disabled-mode zero-call behavior. Live Meta connectivity is not part of the automated test suite. Phase 3 and Phase 4 verification intentionally perform no provider request; fake providers are confined to tests.
 
 ## Phase boundaries
 
-Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery. Phase 3 adds the offline structured specification editor, deterministic clarifications, module plan, verification plan, JSON export, immutable revisions, and readiness review.
+Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery. Phase 3 adds the offline structured specification editor, deterministic clarifications, module plan, verification plan, JSON export, immutable revisions, and readiness review. Phase 4 adds feature-gated Meta generation, typed RTL/testbench contracts, persistent generation events and proposals, safe review/application, and workspace conflict protection.
 
-The next phase can connect the requirements planner to the Meta integration, followed by carefully sandboxed RTL generation and file-writing tools, tool runners for simulation and synthesis, artifact references, actual verification evidence, and autonomous repair. Those capabilities remain intentionally disabled here; **Build circuit** is visible but cannot run.
+The next phase can add lint/compile and simulation tool runners, actual verification evidence, waveform/artifact references, synthesis, and repair loops. Those capabilities remain intentionally disabled here; **Build circuit** is visible but cannot run.

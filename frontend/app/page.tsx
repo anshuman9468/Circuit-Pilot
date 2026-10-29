@@ -364,6 +364,18 @@ export default function HomePage() {
     }
   }
 
+  async function refreshFilesAfterGeneration() {
+    if (!project) return;
+    const loadedFiles = await api.listFiles(project.id);
+    setFiles(loadedFiles);
+    const nextFile = activeFile ? loadedFiles.find((item) => item.id === activeFile.id) || loadedFiles[0] : loadedFiles[0];
+    if (!nextFile) {
+      setActiveFile(null); setFileContent(""); setFileDraft(""); return;
+    }
+    const document = await api.getFile(project.id, nextFile.id);
+    setActiveFile(nextFile); setFileContent(document.content); setFileDraft(document.content);
+  }
+
   async function selectFile(file: ProjectFile) {
     if (file.id === activeFile?.id || !confirmDiscard()) return;
     setLoadingFile(true);
@@ -530,7 +542,7 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 3 structured planning</div>
+          <div className="sidebar-footer">Local workspace · SQLite + filesystem<br />Phase 4 staged generation</div>
         </aside>
 
         <section className="workspace">
@@ -608,7 +620,7 @@ export default function HomePage() {
                         <div className="conversation-composer"><textarea aria-label="Message CircuitPilot" placeholder="Ask about this circuit project…" value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") void sendMessage(); }} disabled={Boolean(activeRunId) || sendingMessage} /><div className="composer-footer"><span>Read-only project tools · Ctrl/⌘ + Enter to send</span><button className="button primary" onClick={() => void sendMessage()} disabled={!messageDraft.trim() || Boolean(activeRunId) || sendingMessage}><Send size={13} /> {sendingMessage ? "Starting…" : "Send"}</button></div></div>
                       </>}
                     </div>}
-                    {tab === "specification" && <SpecificationPanel projectId={project.id} onDirtyChange={setSpecificationDirty} onActivityChanged={() => void refreshActivity(project.id)} />}
+                    {tab === "specification" && <SpecificationPanel projectId={project.id} onDirtyChange={setSpecificationDirty} onActivityChanged={() => void refreshActivity(project.id)} onFilesChanged={refreshFilesAfterGeneration} />}
                     {tab === "files" && <div className="files-layout">
                       <div className="file-tree" aria-label="Project files">
                         <div className="file-tree-heading"><span>Source files</span><button className="icon-button" aria-label="Create file" title="Create file" onClick={() => { setModalError(null); setModal("file"); }}><FilePlus2 size={15} /></button></div>

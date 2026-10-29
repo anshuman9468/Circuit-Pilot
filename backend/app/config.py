@@ -69,6 +69,9 @@ class Settings:
     max_tool_result_chars: int = 32_000
     max_active_runs: int = 1
     max_user_message_chars: int = 20_000
+    generation_enabled: bool = False
+    max_generation_output_bytes: int = 512 * 1024
+    max_generation_corrections: int = 1
 
     def __post_init__(self) -> None:
         if self.model_timeout_seconds <= 0:
@@ -81,6 +84,8 @@ class Settings:
             "max_tool_result_chars",
             "max_active_runs",
             "max_user_message_chars",
+            "max_generation_output_bytes",
+            "max_generation_corrections",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -115,6 +120,9 @@ class Settings:
             max_tool_result_chars=int(_env("MAX_TOOL_RESULT_CHARS", "32000", local) or "32000"),
             max_active_runs=int(_env("MAX_ACTIVE_RUNS", "1", local) or "1"),
             max_user_message_chars=int(_env("MAX_USER_MESSAGE_CHARS", "20000", local) or "20000"),
+            generation_enabled=(_env("GENERATION_ENABLED", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
+            max_generation_output_bytes=int(_env("MAX_GENERATION_OUTPUT_BYTES", "524288", local) or "524288"),
+            max_generation_corrections=int(_env("MAX_GENERATION_CORRECTIONS", "1", local) or "1"),
         )
 
 

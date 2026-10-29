@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .specification import CircuitSpecification, ValidationReport
+from .generation import GenerationClarification, GenerationResult
 
 
 MAX_TEXT_CHARS = 262_144
@@ -251,3 +252,78 @@ class SpecificationExportResponse(BaseModel):
     specification: CircuitSpecification
     validation: ValidationReport
     exported_at: str
+
+
+class GenerationConfigResponse(BaseModel):
+    enabled: bool
+    configured: bool
+    status: str
+    model: str
+    message: str
+
+
+class GenerationEventResponse(BaseModel):
+    id: str
+    event_type: str
+    summary: str
+    metadata: dict[str, Any] | None = None
+    created_at: str
+
+
+class GenerationFileDiffResponse(BaseModel):
+    path: str
+    role: str
+    change_type: str
+    existing_content: str | None = None
+    proposed_content: str
+
+
+class GenerationProposalSummaryResponse(BaseModel):
+    proposal_id: str
+    generation_id: str
+    status: str
+    specification_revision: int
+    top_module: str
+    testbench_top: str
+    implementation_summary: str
+    created_at: str
+    updated_at: str
+
+
+class GenerationProposalResponse(BaseModel):
+    proposal_id: str
+    generation_id: str
+    project_id: str
+    status: str
+    specification_revision: int
+    baseline_revision: str
+    result: GenerationResult
+    files: list[GenerationFileDiffResponse]
+    assumptions: list[str]
+    unresolved_questions: list[str]
+    known_limitations: list[str]
+    backup_count: int
+    created_at: str
+    updated_at: str
+
+
+class GenerationResponse(BaseModel):
+    id: str
+    project_id: str
+    specification_revision: int
+    state: str
+    model: str
+    rounds: int
+    correction_attempts: int
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    cancel_requested: bool
+    clarification: list[GenerationClarification] = Field(default_factory=list)
+    proposal_id: str | None = None
+    created_at: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    events: list[GenerationEventResponse] = Field(default_factory=list)
