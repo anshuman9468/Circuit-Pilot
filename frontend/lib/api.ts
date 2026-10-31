@@ -29,7 +29,105 @@ export type ActivityEvent = {
 export type Results = {
   available: boolean;
   message: string;
-  runs: unknown[];
+  runs: ExecutionRun[];
+};
+
+export type ToolchainStatus = {
+  runtime_requested: string;
+  runtime: string | null;
+  runtime_available: boolean;
+  runtime_version: string | null;
+  image: string;
+  image_available: boolean;
+  tool_versions: Record<string, string>;
+  checked_at: string;
+  message: string;
+  setup_instructions: string[];
+};
+
+export type ExecutionManifest = {
+  project_id: string;
+  rtl_paths: string[];
+  testbench_paths: string[];
+  include_dirs: string[];
+  top_candidates: string[];
+  testbench_top_candidates: string[];
+};
+
+export type Diagnostic = {
+  severity: "info" | "warning" | "error" | "unknown";
+  message: string;
+  raw: string | null;
+  file: string | null;
+  line: number | null;
+  column: number | null;
+};
+
+export type TestbenchReport = {
+  status: "passed" | "failed" | "unknown";
+  checks_total: number;
+  checks_passed: number;
+  checks_failed: number;
+  check_ids: string[];
+  completion_marker: string | null;
+  limitation: string | null;
+};
+
+export type ExecutionStage = {
+  stage: string;
+  status: string;
+  tool: string;
+  tool_version: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
+  exit_code: number | null;
+  termination_reason: string | null;
+  diagnostics: Diagnostic[];
+  testbench_report: TestbenchReport | null;
+  metrics: Record<string, number | string>;
+  artifact_ids: string[];
+  log_artifact_id: string | null;
+  log_truncated: boolean;
+};
+
+export type ExecutionEvent = {
+  id: string;
+  stage_name: string | null;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type ExecutionArtifact = {
+  id: string;
+  kind: string;
+  name: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  content_type: string | null;
+  stage: string | null;
+  created_at: string;
+};
+
+export type ExecutionRun = {
+  id: string;
+  project_id: string;
+  status: string;
+  stage: string;
+  snapshot_id: string | null;
+  specification_revision: number | null;
+  generation_proposal_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  cancel_requested: boolean;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  stages: ExecutionStage[];
+  events: ExecutionEvent[];
+  artifacts: ExecutionArtifact[];
 };
 
 export type ModelConfig = {
@@ -502,6 +600,23 @@ export const api = {
     request<void>(`/projects/${projectId}/files/${fileId}`, { method: "DELETE" }),
   activity: (id: string) => request<ActivityEvent[]>(`/projects/${id}/activity`),
   results: (id: string) => request<Results>(`/projects/${id}/results`),
+  toolchainStatus: () => request<ToolchainStatus>("/toolchain/status"),
+  executionManifest: (id: string) => request<ExecutionManifest>(`/projects/${id}/execution/manifest`),
+  listExecutionRuns: (id: string) => request<ExecutionRun[]>(`/projects/${id}/execution/runs`),
+  startExecution: (id: string, payload: {
+    stage: "lint" | "simulation" | "synthesis" | "checks";
+    specification_revision?: number | null;
+    generation_proposal_id?: string | null;
+    rtl_paths: string[];
+    testbench_paths?: string[];
+    include_dirs?: string[];
+    top_module: string;
+    testbench_top?: string | null;
+    parameters?: Record<string, string | number>;
+  }) => request<ExecutionRun>(`/projects/${id}/execution/runs`, { method: "POST", body: JSON.stringify(payload) }),
+  getExecutionRun: (projectId: string, runId: string) => request<ExecutionRun>(`/projects/${projectId}/execution/runs/${runId}`),
+  cancelExecution: (projectId: string, runId: string) => request<ExecutionRun>(`/projects/${projectId}/execution/runs/${runId}/cancel`, { method: "POST" }),
+  executionArtifactUrl: (projectId: string, runId: string, artifactId: string) => `${API_BASE}/projects/${projectId}/execution/runs/${runId}/artifacts/${artifactId}`,
   modelConfig: () => request<ModelConfig>("/config/model"),
   testModelConnection: () => request<ConnectionTest>("/config/model/test", { method: "POST" }),
   getConversation: (id: string) => request<Conversation>(`/projects/${id}/conversation`),

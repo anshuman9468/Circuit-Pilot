@@ -80,24 +80,48 @@ class ProjectEvent(Base):
 
 
 class Run(Base):
-    """Minimal future execution record; Phase 1 never creates runs."""
+    """Persistent engineering execution record.
+
+    The original Phase 1 table was intentionally small.  The additional
+    fields remain nullable/defaulted so existing local SQLite databases can be
+    upgraded additively without losing their history.
+    """
 
     __tablename__ = "runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
-    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued")
+    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="engineering")
+    stage: Mapped[str] = mapped_column(String(30), nullable=False, default="checks")
+    specification_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    generation_proposal_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    snapshot_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    snapshot_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    request_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    toolchain_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="runs")
     artifacts: Mapped[list["ArtifactReference"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
+    stages: Mapped[list["RunStage"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="RunStage.created_at"
+    )
+    events: Mapped[list["RunEvent"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="RunEvent.created_at"
+    )
 
 
 class ArtifactReference(Base):
-    """Minimal future artifact reference; paths are never exposed in Phase 1 responses."""
+    """Opaque reference to a bounded, collected run artifact."""
 
     __tablename__ = "artifact_references"
 
@@ -105,9 +129,53 @@ class ArtifactReference(Base):
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
     relative_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     run: Mapped[Run] = relationship(back_populates="artifacts")
+
+
+class RunStage(Base):
+    __tablename__ = "run_stages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    tool: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    tool_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    termination_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    diagnostics_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    testbench_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    metrics_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    artifact_ids_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    log_artifact_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    log_truncated: Mapped[bool] = mapped_column(nullable=False, default=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    run: Mapped[Run] = relationship(back_populates="stages")
+
+
+class RunEvent(Base):
+    __tablename__ = "run_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    stage_name: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    summary: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    run: Mapped[Run] = relationship(back_populates="events")
 
 
 class Conversation(Base):

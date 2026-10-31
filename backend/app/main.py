@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .api import router, validation_error_response
 from .conversation_api import router as conversation_router
 from .generation_api import router as generation_router
+from .execution_api import router as execution_router
 from .specification_api import router as specification_router
 from .config import Settings, settings
 from .db import create_database, initialize_database
@@ -17,6 +18,8 @@ from .services.agent_runs import RunManager, recover_interrupted_runs
 from .services.generation_service import GenerationManager, MetaGenerationProvider, recover_interrupted_generations
 from .services.model_provider import FallbackModelProvider, MetaModelProvider, OpenRouterModelProvider
 from .services.planner_service import MetaRequirementsPlanner, SpecificationPlannerManager, recover_interrupted_planner_runs
+from .services.execution_service import ExecutionManager, recover_interrupted_execution_runs
+from .services.toolchain import ContainerRuntime
 from .services.tool_registry import ReadOnlyToolRegistry
 from .services.workspace import WorkspaceService
 
@@ -46,7 +49,7 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def create_app(app_settings: Settings | None = None, generation_provider=None, planner_provider=None) -> FastAPI:
+def create_app(app_settings: Settings | None = None, generation_provider=None, planner_provider=None, execution_runtime=None) -> FastAPI:
     active_settings = app_settings or settings
     engine, session_factory = create_database(active_settings.database_path)
     initialize_database(engine)
@@ -71,9 +74,12 @@ def create_app(app_settings: Settings | None = None, generation_provider=None, p
     app.state.run_manager = RunManager(app)
     app.state.generation_manager = GenerationManager(app)
     app.state.planner_manager = SpecificationPlannerManager(app)
+    app.state.toolchain_runtime = execution_runtime or ContainerRuntime(active_settings)
+    app.state.execution_manager = ExecutionManager(app)
     recover_interrupted_runs(session_factory)
     recover_interrupted_generations(session_factory)
     recover_interrupted_planner_runs(session_factory)
+    recover_interrupted_execution_runs(session_factory, app.state.toolchain_runtime)
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=active_settings.max_request_size)
     app.add_middleware(
         CORSMiddleware,
@@ -86,6 +92,7 @@ def create_app(app_settings: Settings | None = None, generation_provider=None, p
     app.include_router(conversation_router)
     app.include_router(specification_router)
     app.include_router(generation_router)
+    app.include_router(execution_router)
 
     @app.exception_handler(ApiError)
     async def handle_api_error(request: Request, exc: ApiError):

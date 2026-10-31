@@ -32,6 +32,7 @@ import { useEffect, useState } from "react";
 
 import { ActivityEvent, AgentRun, api, Conversation, ModelConfig, Project, ProjectFile, ProjectSummary, Results } from "../lib/api";
 import SpecificationPanel from "../components/SpecificationPanel";
+import ExecutionPanel from "../components/ExecutionPanel";
 
 const CodeEditor = dynamic(() => import("../components/CodeEditor"), {
   ssr: false,
@@ -640,7 +641,7 @@ export default function HomePage() {
                       </div>
                     </div>}
                     {tab === "activity" && <div className="activity-list">{events.length === 0 ? <div className="empty-state"><div className="empty-state-inner"><div className="empty-icon"><History size={20} /></div><div className="empty-title">No project activity yet</div><div className="empty-copy">Saved project actions will appear here. Agent execution events are intentionally not shown until that capability exists.</div></div></div> : events.map((event) => <div className="activity-event" key={event.id}><span className="activity-dot" /><div><div className="activity-summary">{event.summary}</div><div className="activity-type">{eventLabel(event)}</div></div><span className="activity-time" title={readableDate(event.created_at)}>{relativeDate(event.created_at)}</span></div>)}</div>}
-                    {tab === "results" && <div className="results-panel"><div className="build-note"><div className="build-note-title"><Info size={17} color="#5dc9c0" /> Simulation is not connected yet</div><p>{results?.message || "Simulation and synthesis results will appear here in a later execution phase. Phase 2 conversations do not invent runs, waveforms, or verification results."}</p></div></div>}
+                    {tab === "results" && <ExecutionPanel projectId={project.id} onActivityChanged={() => void refreshActivity(project.id)} />}
                   </div>
                 </section>
               </>

@@ -139,6 +139,115 @@ Generated files first appear as a persistent proposal. Review the summary, assum
 
 Phase 4 has no compilation or simulation runner. Fake providers exist only in offline tests and establish orchestration, persistence, and safety behavior—not RTL design quality or hardware verification. Phase 5 can attach linting, compilation, simulation, synthesis, artifact references, and evidence-backed result reporting to the ordered source manifest and staged proposal.
 
+## Phase 5 engineering tool execution
+
+Phase 5 executes real engineering tools against an immutable project snapshot.
+It does not call Meta or any other model. The Results tab exposes toolchain
+readiness, a validated RTL/testbench manifest, Run lint, Run simulation, Run
+synthesis, Run checks, cancellation, persistent stage history, bounded logs,
+diagnostics, and opaque artifact downloads.
+
+### Toolchain setup
+
+Podman is preferred on Linux and Docker is supported. The backend does not
+install, build, or pull an image from health checks or from a run request. Build
+the image explicitly:
+
+```bash
+podman build --tag circuitpilot/toolchain:phase5 ./toolchain
+# or: docker build --tag circuitpilot/toolchain:phase5 ./toolchain
+```
+
+The verified image record is in [`toolchain/TOOLCHAIN_VERSIONS.md`](toolchain/TOOLCHAIN_VERSIONS.md).
+The runtime status endpoint is `GET /api/toolchain/status`; it reports runtime,
+image, and tool versions plus actionable setup instructions. The endpoint only
+inspects local availability. Configure `TOOLCHAIN_RUNTIME=podman`,
+`TOOLCHAIN_RUNTIME=docker`, or `auto` and set `TOOLCHAIN_IMAGE` when using a
+reviewed image. Other limits are documented in [`.env.example`](.env.example):
+timeout, memory, CPU, PID, source, log, artifact, and concurrency limits.
+
+Each stage runs in a non-root container with no network, read-only snapshot
+input, a separate writable scratch/output mount, dropped capabilities, no
+new privileges, a PID limit, and a timeout. User content is passed as fixed
+argument arrays or server-generated Yosys scripts. There is no unrestricted
+host-tool fallback.
+
+The supported common HDL subset is conservative Verilog/SystemVerilog accepted
+by Verilator, Icarus Verilog, and Yosys: modules, parameters, vectors,
+continuous assignments, `always_comb`, `always_ff`/clocked `always`, blocking
+combinational assignments, nonblocking sequential assignments, and ordinary
+generate/conditional structure. RTL must not rely on delays, `initial`, file
+I/O, PLI, external IP, arbitrary tool scripts, or simulation-only constructs.
+The selected tools and flags are based on their official command references:
+[Verilator command line](https://verilator.org/guide/latest/exe_verilator.html),
+[Icarus command line](https://steveicarus.github.io/iverilog/usage/command_line_flags.html),
+[Yosys command-line usage](https://yosyshq.readthedocs.io/projects/yosys/en/latest/using_yosys/command_line_usage.html),
+and [Podman run](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
+
+### Manifests and stages
+
+Create source files through the existing Files workflow, then open Results.
+Select the RTL top module and testbench top module and review the ordered
+source lists. Synthesis always receives RTL files only; simulation compiles
+the RTL and selected testbench files in a separate Icarus stage. A run captures
+the specification revision when one is supplied, any applied generation
+proposal, every source hash, manifest, parameters, top names, image/tool
+identity, and timestamps before starting. Editing files later does not alter
+the old run.
+
+The pipeline stops dependent stages after a blocking failure and records them
+as `skipped`; skipped stages are never reported as passes. Individual and
+pipeline endpoints are available under `/api/projects/{project_id}/execution`:
+`/manifest`, `/runs`, `/runs/{run_id}`, `/runs/{run_id}/cancel`, and the
+project-scoped artifact download route. Only one engineering run per project
+and the configured global active-run limit are allowed. Backend restart marks
+queued/running runs `interrupted` and reconciles only containers labeled by
+CircuitPilot.
+
+Lint uses Verilator `--lint-only --Wall` and preserves warnings, errors, and
+bounded raw logs. Simulation records compilation and `vvp` execution
+separately. A process exit of zero is not enough for a verification pass. A
+CircuitPilot-compatible testbench should report real checks using:
+
+```text
+CIRCUITPILOT_CHECK id=<stable-id> status=passed
+CIRCUITPILOT_CHECK id=<stable-id> status=failed
+CIRCUITPILOT_TESTBENCH_PASS
+CIRCUITPILOT_TESTBENCH_FAIL
+```
+
+The success marker is accepted only when at least one check was reported, all
+checks passed, and the process exited normally. A normal exit without this
+contract is shown as **Simulation completed; verification outcome unknown**.
+Timeouts, nonzero exits, failed checks, and resource failures are failures.
+The report is evidence emitted by the testbench, not independent proof of
+hardware correctness. VCD files are downloadable when the testbench actually
+produces one; missing waveforms do not become fabricated results.
+
+Yosys performs hierarchy checking, process/memory lowering, optimization,
+structural checking, statistics, a synthesized netlist, and JSON netlist
+collection. Its metrics are labeled **generic synthesis**. They do not imply
+physical area, frequency, power, timing closure, fabrication readiness, or
+functional correctness. Raw logs remain available beside parsed metrics, and
+log/artifact limits are enforced while collecting them.
+
+### Phase 5 verification and boundaries
+
+Offline orchestration tests use an injected fake runtime only to test lifecycle,
+snapshot, validation, cancellation, isolation, and persistence behavior. The
+explicit real-container smoke test is run with:
+
+```bash
+cd backend
+CIRCUITPILOT_RUN_TOOLCHAIN_TESTS=1 uv run pytest -q tests/test_toolchain_integration.py
+```
+
+No model key is required and no model request is made by these tests. Phase 6
+can consume the typed `ExecutionRunResult`, `StageResult`, `Diagnostic`,
+`TestbenchReport`, `ExecutionSnapshot`, and artifact references for repair
+planning. Autonomous repair, file-writing agents, lint-driven model calls,
+and synthesis feedback loops remain intentionally out of scope.
+
 ## Available read-only tools
 
 The model receives only these tools, all bound by backend code to the currently open project:
@@ -155,6 +264,9 @@ By default, runtime data is stored under `data/`:
 
 - `data/circuitpilot.db` stores projects, requirements, file metadata, project events, conversations, protocol messages, runs, run events, current specification pointers, validation reports, immutable specification revisions, persisted specification planner requests/events/proposals, generation jobs/events, staged proposals, and overwrite backups.
 - `data/workspaces/<project-id>/` stores the actual project text files.
+- `data/execution-snapshots/<run-id>/` stores immutable input snapshots and server-generated tool scripts.
+- `data/execution-output/<run-id>/` is bounded transient scratch output and is cleaned after collection.
+- `data/execution-artifacts/<run-id>/` stores bounded collected logs, netlists, reports, and waveforms.
 
 The data directory is ignored by Git. Saved assistant-visible messages are persisted, while complete assistant tool-call and matching tool-response protocol records are retained separately for valid future continuation. Interrupted queued/running runs are marked `interrupted` on the next backend startup.
 
@@ -179,6 +291,6 @@ The test suite covers project isolation, persistence, tool ordering and binding,
 
 ## Phase boundaries
 
-Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery. Phase 3 adds the offline structured specification editor, deterministic clarifications, module plan, verification plan, JSON export, immutable revisions, readiness review, and the optional Meta proposal/review workflow. Phase 4 adds feature-gated Meta generation, typed RTL/testbench contracts, persistent generation events and proposals, safe review/application, and workspace conflict protection.
+Phase 1 supports persistent project CRUD, requirements, allowlisted text files, activity, and honest empty results. Phase 2 adds the real Meta provider adapter, sanitized configuration status, durable conversations, bounded read-only tool calling, asynchronous runs, cancellation, retry, usage reporting, and restart recovery. Phase 3 adds the offline structured specification editor, deterministic clarifications, module plan, verification plan, JSON export, immutable revisions, readiness review, and the optional Meta proposal/review workflow. Phase 4 adds feature-gated Meta generation, typed RTL/testbench contracts, persistent generation events and proposals, safe review/application, and workspace conflict protection. Phase 5 adds real containerized lint, compilation, simulation, generic synthesis, snapshots, diagnostics, artifacts, lifecycle, cancellation, and persistent Results.
 
-The next phase can add lint/compile and simulation tool runners, actual verification evidence, waveform/artifact references, synthesis, and repair loops. Those capabilities remain intentionally disabled here; **Build circuit** is visible but cannot run.
+Phase 6 can add evidence-driven repair loops. **Build circuit** remains visible but disabled until autonomous repair is deliberately implemented.

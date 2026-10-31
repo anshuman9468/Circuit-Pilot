@@ -51,6 +51,34 @@ class WorkspaceService:
             raise ApiError(400, "invalid_file_path", "The path escapes the project workspace.") from exc
         return candidate
 
+    def safe_directory(self, project_id: str, relative_path: str) -> Path:
+        """Resolve an existing project directory without following symlinks."""
+        project_root = self.project_dir(project_id)
+        relative_path = relative_path.replace("\\", "/").strip("/")
+        if relative_path in {"", "."}:
+            candidate = project_root
+        else:
+            parts = relative_path.split("/")
+            if any(part in {"", ".", ".."} for part in parts):
+                raise ApiError(400, "invalid_file_path", "Directory paths must stay inside the project workspace.")
+            candidate = project_root.joinpath(*parts)
+        try:
+            resolved = candidate.resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise ApiError(404, "directory_not_found", "The requested project directory does not exist.") from exc
+        try:
+            resolved.relative_to(project_root.resolve())
+        except ValueError as exc:
+            raise ApiError(400, "invalid_file_path", "The path escapes the project workspace.") from exc
+        if candidate.is_symlink() or not resolved.is_dir():
+            raise ApiError(400, "invalid_file_path", "Symlink directories are not allowed.")
+        current = project_root
+        for part in relative_path.split("/") if relative_path else []:
+            current = current / part
+            if current.is_symlink():
+                raise ApiError(400, "invalid_file_path", "Symlink directories are not allowed.")
+        return resolved
+
     def read(self, project_id: str, relative_path: str) -> str:
         path = self.safe_path(project_id, relative_path)
         if not path.is_file():

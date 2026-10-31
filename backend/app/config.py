@@ -54,7 +54,12 @@ class Settings:
     backend_port: int = 8000
     database_path: Path = field(default_factory=lambda: DEFAULT_DATA_DIR / "circuitpilot.db")
     workspace_root: Path = field(default_factory=lambda: DEFAULT_DATA_DIR / "workspaces")
-    allowed_origins: tuple[str, ...] = ("http://localhost:3000", "http://127.0.0.1:3000")
+    allowed_origins: tuple[str, ...] = (
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    )
     max_file_size: int = 256 * 1024
     max_request_size: int = 512 * 1024
     max_requirements_size: int = 128 * 1024
@@ -83,6 +88,21 @@ class Settings:
     generation_enabled: bool = False
     max_generation_output_bytes: int = 512 * 1024
     max_generation_corrections: int = 1
+    toolchain_runtime: str = "auto"
+    toolchain_image: str = "circuitpilot/toolchain:phase5"
+    toolchain_timeout_seconds: float = 120.0
+    toolchain_memory: str = "512m"
+    toolchain_cpus: str = "1.0"
+    toolchain_pids_limit: int = 128
+    toolchain_max_log_bytes: int = 256 * 1024
+    toolchain_max_artifact_bytes: int = 4 * 1024 * 1024
+    toolchain_max_total_artifact_bytes: int = 16 * 1024 * 1024
+    toolchain_max_source_files: int = 200
+    toolchain_max_source_bytes: int = 2 * 1024 * 1024
+    max_active_execution_runs: int = 1
+    execution_snapshot_root: Path = field(default_factory=lambda: DEFAULT_DATA_DIR / "execution-snapshots")
+    execution_output_root: Path = field(default_factory=lambda: DEFAULT_DATA_DIR / "execution-output")
+    execution_artifact_root: Path = field(default_factory=lambda: DEFAULT_DATA_DIR / "execution-artifacts")
 
     def __post_init__(self) -> None:
         if self.model_timeout_seconds <= 0:
@@ -98,6 +118,13 @@ class Settings:
             "max_planner_corrections",
             "max_generation_output_bytes",
             "max_generation_corrections",
+            "toolchain_pids_limit",
+            "toolchain_max_log_bytes",
+            "toolchain_max_artifact_bytes",
+            "toolchain_max_total_artifact_bytes",
+            "toolchain_max_source_files",
+            "toolchain_max_source_bytes",
+            "max_active_execution_runs",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -105,6 +132,12 @@ class Settings:
             raise ValueError("meta_base_url must be an HTTP(S) URL")
         if not self.model_fallback_base_url.startswith(("http://", "https://")):
             raise ValueError("model_fallback_base_url must be an HTTP(S) URL")
+        if self.toolchain_runtime not in {"auto", "podman", "docker"}:
+            raise ValueError("toolchain_runtime must be auto, podman, or docker")
+        if self.toolchain_timeout_seconds <= 0:
+            raise ValueError("toolchain_timeout_seconds must be positive")
+        if not self.toolchain_image.strip() or "/" not in self.toolchain_image:
+            raise ValueError("toolchain_image must be an explicit image name")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -112,6 +145,9 @@ class Settings:
         data_dir = _absolute_path(_env("DATA_DIR", local=local), DEFAULT_DATA_DIR)
         database_path = _absolute_path(_env("DATABASE_PATH", local=local), data_dir / "circuitpilot.db")
         workspace_root = _absolute_path(_env("WORKSPACE_ROOT", local=local), data_dir / "workspaces")
+        snapshot_root = _absolute_path(_env("EXECUTION_SNAPSHOT_ROOT", local=local), data_dir / "execution-snapshots")
+        artifact_root = _absolute_path(_env("EXECUTION_ARTIFACT_ROOT", local=local), data_dir / "execution-artifacts")
+        output_root = _absolute_path(_env("EXECUTION_OUTPUT_ROOT", local=local), data_dir / "execution-output")
         origins = tuple(
             origin.strip()
             for origin in (_env("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000", local) or "").split(",")
@@ -145,6 +181,21 @@ class Settings:
             generation_enabled=(_env("GENERATION_ENABLED", "false", local) or "false").lower() in {"1", "true", "yes", "on"},
             max_generation_output_bytes=int(_env("MAX_GENERATION_OUTPUT_BYTES", "524288", local) or "524288"),
             max_generation_corrections=int(_env("MAX_GENERATION_CORRECTIONS", "1", local) or "1"),
+            toolchain_runtime=_env("TOOLCHAIN_RUNTIME", "auto", local) or "auto",
+            toolchain_image=_env("TOOLCHAIN_IMAGE", "circuitpilot/toolchain:phase5", local) or "circuitpilot/toolchain:phase5",
+            toolchain_timeout_seconds=float(_env("TOOLCHAIN_TIMEOUT_SECONDS", "120", local) or "120"),
+            toolchain_memory=_env("TOOLCHAIN_MEMORY", "512m", local) or "512m",
+            toolchain_cpus=_env("TOOLCHAIN_CPUS", "1.0", local) or "1.0",
+            toolchain_pids_limit=int(_env("TOOLCHAIN_PIDS_LIMIT", "128", local) or "128"),
+            toolchain_max_log_bytes=int(_env("TOOLCHAIN_MAX_LOG_BYTES", "262144", local) or "262144"),
+            toolchain_max_artifact_bytes=int(_env("TOOLCHAIN_MAX_ARTIFACT_BYTES", "4194304", local) or "4194304"),
+            toolchain_max_total_artifact_bytes=int(_env("TOOLCHAIN_MAX_TOTAL_ARTIFACT_BYTES", "16777216", local) or "16777216"),
+            toolchain_max_source_files=int(_env("TOOLCHAIN_MAX_SOURCE_FILES", "200", local) or "200"),
+            toolchain_max_source_bytes=int(_env("TOOLCHAIN_MAX_SOURCE_BYTES", "2097152", local) or "2097152"),
+            max_active_execution_runs=int(_env("MAX_ACTIVE_EXECUTION_RUNS", "1", local) or "1"),
+            execution_snapshot_root=snapshot_root,
+            execution_output_root=output_root,
+            execution_artifact_root=artifact_root,
         )
 
 

@@ -39,6 +39,28 @@ def initialize_database(engine) -> None:
     # schema changes recoverable for an existing SQLite data directory.
     if engine.dialect.name == "sqlite":
         additive_columns = {
+            "runs": {
+                "kind": "VARCHAR(30) DEFAULT 'engineering'",
+                "stage": "VARCHAR(30) DEFAULT 'checks'",
+                "specification_revision": "INTEGER",
+                "generation_proposal_id": "VARCHAR(36)",
+                "snapshot_id": "VARCHAR(80)",
+                "snapshot_json": "JSON",
+                "request_json": "JSON",
+                "toolchain_json": "JSON",
+                "error_code": "VARCHAR(80)",
+                "error_message": "VARCHAR(500)",
+                "cancel_requested": "BOOLEAN DEFAULT 0",
+                "started_at": "DATETIME",
+                "updated_at": "DATETIME",
+            },
+            "artifact_references": {
+                "name": "VARCHAR(255)",
+                "size_bytes": "INTEGER",
+                "sha256": "VARCHAR(64)",
+                "content_type": "VARCHAR(120)",
+                "stage": "VARCHAR(30)",
+            },
             "generation_jobs": {
                 "prompt_tokens": "INTEGER",
                 "completion_tokens": "INTEGER",
@@ -56,6 +78,10 @@ def initialize_database(engine) -> None:
                 for name, sql_type in columns.items():
                     if name not in existing:
                         connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
+            connection.execute(text("UPDATE runs SET kind = 'engineering' WHERE kind IS NULL"))
+            connection.execute(text("UPDATE runs SET stage = 'checks' WHERE stage IS NULL"))
+            connection.execute(text("UPDATE runs SET cancel_requested = 0 WHERE cancel_requested IS NULL"))
+            connection.execute(text("UPDATE runs SET updated_at = created_at WHERE updated_at IS NULL"))
             if "updated_at" in additive_columns.get("specification_planner_runs", {}):
                 connection.execute(
                     text("UPDATE specification_planner_runs SET updated_at = created_at WHERE updated_at IS NULL")

@@ -380,10 +380,19 @@ def list_runs(project_id: str, session: Session = Depends(get_session)) -> list[
 @router.get("/projects/{project_id}/results", response_model=ResultsResponse)
 def get_results(project_id: str, session: Session = Depends(get_session)) -> ResultsResponse:
     get_project(session, project_id)
+    runs = session.scalars(
+        select(Run)
+        .where(Run.project_id == project_id, Run.kind == "engineering")
+        .order_by(Run.created_at.desc(), Run.id.desc())
+    ).all()
     return ResultsResponse(
-        available=False,
-        message="Simulation and synthesis results will be available in a later execution phase. Phase 2 conversations do not create verification results.",
-        runs=[],
+        available=bool(runs),
+        message=(
+            "Engineering results are persisted per immutable source snapshot. Inspect a run for diagnostics and artifacts."
+            if runs
+            else "No engineering runs yet. Configure the container toolchain, then run lint, simulation, synthesis, or checks."
+        ),
+        runs=[RunResponse(id=run.id, status=run.status, created_at=iso(run.created_at), completed_at=iso(run.completed_at) if run.completed_at else None) for run in runs],
     )
 
 
